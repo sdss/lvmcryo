@@ -44,16 +44,17 @@ jobs:
       - name: Lint with black
         run: |
           pip install black
-          black --check src/gort
+          black --check src/
 
       - name: Test with pytest
         run: |
           pip install pytest pytest-mock pytest-asyncio pytest-cov
           pytest
 
-      # - name: Upload coverage to Codecov
-      #   uses: codecov/codecov-action@v3
-      #   env:
-      #     CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      #   with:
-      #     file: ./coverage.xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: true
+          verbose: true
