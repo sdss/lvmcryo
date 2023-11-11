@@ -1,0 +1,73 @@
+---
+defaults:
+  cameras: ['r1', 'b1', 'z1', 'r2', 'b2', 'z2', 'r3', 'b3', 'z3']
+  interactive: auto
+  no_prompt: true
+  check_pressure: true
+  check_temperature: true
+  max_temperature: '{{limits.temperature.max}}'
+  max_pressure: '{{limits.pressure.max}}'
+  min_purge_time: '{{limits.purge.min}}'
+  max_purge_time: '{{limits.purge.max}}'
+  min_fill_time: '{{limits.fill.min}}'
+  max_fill_time: '{{limits.fill.max}}'
+  quiet: false
+  write_json: true
+  write_log: true
+  log_path: '/data/logs/ln2fills/{timestamp}'
+  write_measurements: true
+  measurements_path: '/data/logs/ln2fills/{timestamp}'
+  measurements_interval: 10
+  measurements_extra_time: 0
+  generate_qa: true
+  qa_path: '/data/logs/ln2fills/{timestamp}'
+  slack: true
+  slack_route: http://lvm-hub.lco.cl/restapi/slack/alert/
+  email: false
+  email_recipients: lvm-critical@sdss.org
+
+valves:
+  r1:
+    actor: lvmnps.sp1
+    outlet: r1
+  b1:
+    actor: lvmnps.sp1
+    outlet: b1
+  z1:
+    actor: lvmnps.sp1
+    outlet: z1
+  r2:
+    actor: lvmnps.sp2
+    outlet: r2
+  b2:
+    actor: lvmnps.sp2
+    outlet: b2
+  z2:
+    actor: lvmnps.sp2
+    outlet: z2
+  r3:
+    actor: lvmnps.sp3
+    outlet: r3
+  b3:
+    actor: lvmnps.sp3
+    outlet: b3
+  z3:
+    actor: lvmnps.sp3
+    outlet: z3
+  purge:
+    actor: lvmnps.sp1
+    outlet: purge
+
+limits:
+  pressure:
+    min: null
+    max: 1e-3
+  temperature:
+    min: null
+    max: -140
+  purge:
+    min: 1500
+    max: 1920
+  fill:
+    min: 120
+    max: 360
