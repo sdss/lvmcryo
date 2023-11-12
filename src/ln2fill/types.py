@@ -21,8 +21,10 @@ class OptionsType(TypedDict):
     min_pressure: float
     max_temperature: float
     min_temperature: float
+    purge_time: Optional[float]
     min_purge_time: float
     max_purge_time: float
+    fill_time: Optional[float]
     min_fill_time: float
     max_fill_time: float
     quiet: bool

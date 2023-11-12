@@ -190,6 +190,11 @@ def update_options(
     "Defaults to internal value.",
 )
 @click.option(
+    "--purge-time",
+    type=float,
+    help="Purge time in seconds. If not provided, the thermistors will be used.",
+)
+@click.option(
     "--min-purge-time",
     type=float,
     help="Minimum purge time in seconds. Defaults to internal value. Disable with -1.",
@@ -198,6 +203,11 @@ def update_options(
     "--max-purge-time",
     type=float,
     help="Maximum purge time in seconds. Defaults to internal value. Disable with -1.",
+)
+@click.option(
+    "--fill-time",
+    type=float,
+    help="Fill time in seconds. If not provided, the thermistors will be used.",
 )
 @click.option(
     "--min-fill-time",
