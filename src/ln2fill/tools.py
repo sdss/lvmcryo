@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import warnings
 from collections import defaultdict
@@ -149,3 +150,13 @@ async def read_thermistors() -> dict[str, bool]:
         channels[channel_name] = bool((value & 1 << channel) > 0)
 
     return channels
+
+
+def is_container():
+    """Returns `True` if the code is running inside a container."""
+
+    is_container = os.getenv("IS_CONTAINER", None)
+    if not is_container or is_container in ["", "0"]:
+        return False
+
+    return True

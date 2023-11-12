@@ -18,6 +18,8 @@ import click
 
 from sdsstools import Configuration, get_logger, read_yaml_file
 
+from ln2fill.tools import is_container
+
 from . import config
 from .types import OptionsType
 
@@ -122,6 +124,15 @@ def update_options(
             options["qa_path"] = str(log_path.parent)
         else:
             options["qa_path"] = "./"
+
+    # Determine if we should run interactively.
+    if is_container():
+        options["interactive"] = "no"
+    elif options["interactive"] == "auto":
+        options["interactive"] = "yes"
+
+    if options["interactive"] == "no":
+        options["no_prompt"] = True
 
     return options.copy()
 

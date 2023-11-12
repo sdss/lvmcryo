@@ -15,6 +15,8 @@ class OptionsType(TypedDict):
     """CLI  options."""
 
     cameras: Optional[str]
+    interactive: str
+    no_prompt: bool
     check_pressure: bool
     check_temperature: bool
     max_pressure: float
