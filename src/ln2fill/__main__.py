@@ -19,7 +19,6 @@ import click
 from sdsstools import Configuration, get_logger, read_yaml_file
 
 from . import config
-from .core import test
 from .types import OptionsType
 
 
@@ -334,8 +333,6 @@ def ln2fill_cli(
         log_path = pathlib.Path(options["log_path"])
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log.start_file_logger(str(log_path), mode="w", rotating=False)
-
-    test(log)
 
 
 def main():
