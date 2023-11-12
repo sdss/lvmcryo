@@ -141,7 +141,7 @@ async def read_thermistors() -> dict[str, bool]:
 
     value = int(match.group(1), 16)
 
-    channels: dict[int, bool] = {}
+    channels: dict[str, bool] = {}
     for channel in range(16):
         channel_name = mapping.get(f"channel{channel}", "")
         if channel_name == "":
