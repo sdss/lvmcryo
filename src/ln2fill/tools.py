@@ -9,9 +9,14 @@
 from __future__ import annotations
 
 import asyncio
+import re
+import warnings
 from collections import defaultdict
 
 from typing import Sequence
+
+import asyncudp
+import httpx
 
 from clu import AMQPClient
 
@@ -82,3 +87,65 @@ async def close_all():
 
     async for _ in valves_on_off(list(config["valves"])):
         pass
+
+
+async def get_spectrograph_status(spectrographs: list[str] = ["sp1", "sp2", "sp3"]):
+    """Returns pressures and CCD and LN2 temperatures for all cryostats."""
+
+    api_url: str = config["api.url"]
+
+    api_response: dict[str, float] = {}
+    async with httpx.AsyncClient(base_url=api_url) as client:
+        response_specs = await asyncio.gather(
+            *[client.get(f"/spectrographs/{spec}/summary") for spec in spectrographs]
+        )
+
+        for rs in response_specs:
+            if rs.status_code != 200:
+                raise ValueError("Invalid response from API.")
+            api_response.update(rs.json())
+
+    response: dict[str, dict[str, float]] = {}
+    for spec in spectrographs:
+        for camera in ["r", "b", "z"]:
+            cryostat = f"{camera}{spec[-1]}"
+            response[cryostat] = {}
+            for label in ["ln2", "pressure"]:
+                cryostat_label = f"{cryostat}_{label}"
+                if cryostat_label in api_response:
+                    response[cryostat][label] = api_response[cryostat_label]
+                else:
+                    warnings.warn(f"Cannot find label {cryostat_label!r}.")
+
+    return response
+
+
+async def read_thermistors() -> dict[str, bool]:
+    """Reads the thermistors."""
+
+    host = config["thermistors.host"]
+    port = config["thermistors.port"]
+    mapping = config["thermistors.mapping"]
+
+    socket = await asyncio.wait_for(
+        asyncudp.create_socket(remote_addr=(host, port)),
+        timeout=5,
+    )
+
+    socket.sendto(b"$016\r\n")
+    data, _ = await asyncio.wait_for(socket.recvfrom(), timeout=5)
+
+    match = re.match(rb"!01([0-9A-F]+)\r", data)
+    if match is None:
+        raise ValueError(f"Invalid response from thermistor server at {host!r}.")
+
+    value = int(match.group(1), 16)
+
+    channels: dict[int, bool] = {}
+    for channel in range(16):
+        channel_name = mapping.get(f"channel{channel}", "")
+        if channel_name == "":
+            continue
+        channels[channel_name] = bool((value & 1 << channel) > 0)
+
+    return channels

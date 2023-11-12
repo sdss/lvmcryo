@@ -19,15 +19,13 @@ import click
 from sdsstools import Configuration, get_logger, read_yaml_file
 
 from . import config
+from .core import test
 from .types import OptionsType
 
 
 VALID_ACTIONS = ["purge-and-fill", "purge", "fill", "abort", "clear"]
 
 LOCKFILE = pathlib.Path("/data/ln2fill.lock")
-
-
-log = get_logger("lvm-ln2fill")
 
 
 def update_options(
@@ -129,7 +127,7 @@ def update_options(
     return options.copy()
 
 
-@click.command()
+@click.command(name="ln2fill")
 @click.argument(
     "ACTION",
     type=click.Choice(VALID_ACTIONS, case_sensitive=False),
@@ -294,7 +292,7 @@ def update_options(
     help="Comma-separated list of email recipients. Required if --email is set.",
 )
 @click.pass_context
-def ln2fill(
+def ln2fill_cli(
     ctx,
     action: str,
     use_internal: bool = False,
@@ -308,6 +306,8 @@ def ln2fill(
     elif action == "clear":
         LOCKFILE.unlink(missing_ok=True)
         return
+
+    log = get_logger("lvm-ln2fill", use_rich_handler=True)
 
     options = update_options(
         ctx=ctx,
@@ -325,9 +325,11 @@ def ln2fill(
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log.start_file_logger(str(log_path), mode="w", rotating=False)
 
+    test(log)
+
 
 def main():
-    ln2fill()
+    ln2fill_cli()
 
 
 if __name__ == "__main__":

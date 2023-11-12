@@ -71,3 +71,21 @@ limits:
   fill:
     min: 120
     max: 360
+
+api:
+  url: http://localhost:8888
+
+thermistors:
+  host: 10.8.38.180
+  port: 1025
+  mapping:
+    channel7: supply
+    channel8: r1
+    channel9: b1
+    channel6: z1
+    channel10: r3
+    channel11: b3
+    channel12: z3
+    channel13: r2
+    channel14: b2
+    channel15: z2
