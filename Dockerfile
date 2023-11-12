@@ -5,6 +5,8 @@ LABEL org.opencontainers.image.source https://github.com/sdss/lvm-ln2fill
 
 WORKDIR /opt
 
+RUN apt update && apt install -y build-essential
+
 COPY . ln2fill
 
 RUN pip3 install -U pip setuptools wheel
