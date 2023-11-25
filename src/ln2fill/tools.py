@@ -12,82 +12,189 @@ import asyncio
 import os
 import re
 import warnings
-from collections import defaultdict
 
-from typing import Sequence
+from typing import Any, overload
 
 import asyncudp
 import httpx
+import pandas
 
 from clu import AMQPClient
 
 from . import config
 
 
-def get_client(host: str | None = None):
-    """Get an AMQP client to the RabbitMQ exchange."""
+class CluClient:
+    """AMQP client asynchronous generator.
 
-    return AMQPClient(host=host or str(config["rabbitmq.host"]))
+    Returns an object with an ``AMQPClient`` instance. The normal way to
+    use it is to do ::
+
+        async with CluClient() as client:
+            await client.send_command(...)
+
+    Alternatively one can do ::
+
+        client = await anext(CluClient())
+        await client.send_command(...)
+
+    The asynchronous generator differs from the one in ``AMQPClient`` in that
+    it does not close the connection on exit.
+
+    This class is a singleton, which effectively means the AMQP client is reused
+    during the life of the worker. The singleton can be cleared by calling
+    `.clear`.
+
+    """
+
+    __initialised: bool = False
+    __instance: CluClient | None = None
+
+    def __new__(cls):
+        if cls.__instance is None:
+            cls.__instance = super(CluClient, cls).__new__(cls)
+            cls.__instance.__initialised = False
+
+        return cls.__instance
+
+    def __init__(self):
+        if self.__initialised is True:
+            return
+
+        host: str = os.environ.get("RABBITMQ_HOST", config["rabbitmq.host"])
+        port: int = int(os.environ.get("RABBITMQ_PORT", config["rabbitmq.port"]))
+
+        self.client = AMQPClient(host=host, port=port)
+        self.__initialised = True
+
+    async def __aenter__(self):
+        if not self.client.is_connected():
+            await self.client.start()
+
+        return self.client
+
+    async def __aexit__(self, exc_type, exc, tb):
+        pass
+
+    async def __anext__(self):
+        if not self.client.is_connected():
+            await self.client.start()
+
+        return self.client
+
+    @classmethod
+    def clear(cls):
+        """Clears the current instance."""
+
+        cls.__instance = None
+        cls.__initialised = False
+
+
+async def valve_info(valve: str) -> dict[str, Any]:
+    """Retrieves valve information from the NPS."""
+
+    actor = config[f"valves.{valve}.actor"]
+    outlet = config[f"valves.{valve}.outlet"]
+
+    async with CluClient() as client:
+        cmd = await client.send_command(actor, f"status {outlet}")
+        if cmd.status.did_fail:
+            raise RuntimeError(f"Command '{actor} status {outlet}' failed.")
+
+    return cmd.replies.get("outlet_info")
 
 
 async def valve_on_off(
     valve: str,
-    on: bool = True,
-    off_after: int | None = None,
-    client: AMQPClient | None = None,
-):
-    """Turns a valve on/off."""
+    on: bool,
+    timeout: float | None = None,
+    use_script: bool = True,
+) -> int | None:
+    """Turns a valve on/off.
+
+    Parameters
+    ----------
+    valve
+        The name of the valve. Must be one of the valves defined in the
+        configuration file.
+    on
+        Whether to turn the valve on or off.
+    timeout
+        Time, in seconds, after which the valve will be turned off.
+    use_script
+        If ``timeout`` is defined, the user script ``cycle_with_timeout``
+        (must be defined in the NPS) to set a timeout after which the valve
+        will be turned off. With ``use_script=False``, a ``timeout`` will
+        block until the timeout is reached.
+
+    Returns
+    -------
+    thread_id
+        If ``use_script=True``, the thread number of the user script that
+        was started. Otherwise `None`.
+
+    """
 
     if valve not in config["valves"]:
         raise ValueError(f"Unknown valve {valve!r}.")
 
-    client = client or get_client()
+    actor = config[f"valves.{valve}.actor"]
+    outlet = config[f"valves.{valve}.outlet"]
 
-    async with client:
-        actor = config[f"valves.{valve}.actor"]
-        outlet = config[f"valves.{valve}.outlet"]
+    is_script: bool = False
 
-        if off_after is None:
+    if on is True and isinstance(timeout, (int, float)) and use_script is True:
+        # First we need to get the outlet number.
+        outlet_info = await valve_info(valve)
+        id_ = outlet_info["id"]
+
+        command_string = f"scripts run cycle_with_timeout {id_} {timeout}"
+
+        is_script = True
+
+    else:
+        if on is False or timeout is None:
             command_string = f"{'on' if on else 'off'} {outlet}"
         else:
-            if on is False:
-                raise ValueError("off_after requires on=True.")
-            command_string = f"on --off-after {off_after} {outlet}"
+            command_string = f"on --off-after {timeout} {outlet}"
 
+    async with CluClient() as client:
         command = await client.send_command(actor, command_string)
         if command.status.did_fail:
-            raise RuntimeError(f"Command {actor} {command_string} failed")
+            raise RuntimeError(f"Command '{actor} {command_string}' failed")
 
-        return True
+    if is_script:
+        script_data = command.replies.get("script")
+        return script_data["thread_id"]
 
-
-async def valves_on_off(valves: Sequence[str], on: bool = True):
-    """Turns on/off multiple valves as fast as possible."""
-
-    client = get_client()
-
-    actor_to_valves = defaultdict(list)
-    for valve in valves:
-        actor_to_valves[config[f"valves.{valve}.actor"]].append(valve)
-
-    nn = max(map(len, actor_to_valves.values()))
-
-    for ii in range(nn):
-        coros = []
-        valves = []
-        for vv in actor_to_valves.values():
-            if len(vv) > ii:
-                coros.append(valve_on_off(vv[ii], on=on, client=client))
-                valves.append(vv[ii])
-        await asyncio.gather(*coros)
-        yield valves
+    return
 
 
-async def close_all():
+async def cancel_nps_threads(actor: str, thread_id: int | None = None):
+    """Cancels a script thread in an NPS.
+
+    Parameters
+    ----------
+    actor
+        The name of the NPS actor to command.
+    thread_id
+        The thread ID to cancel. If `None`, all threads in the NPS will be cancelled.
+
+    """
+
+    command_string = f"scripts stop {thread_id if thread_id else ''}"
+
+    async with CluClient() as client:
+        command = await client.send_command(actor, command_string)
+        if command.status.did_fail:
+            raise RuntimeError(f"Command '{actor} {command_string}' failed")
+
+
+async def close_all_valves():
     """Closes all the outlets."""
 
-    async for _ in valves_on_off(list(config["valves"])):
-        pass
+    valves = list(config["valves"])
+    await asyncio.gather(*[valve_on_off(valve, False) for valve in valves])
 
 
 async def get_spectrograph_status(spectrographs: list[str] = ["sp1", "sp2", "sp3"]):
@@ -121,8 +228,62 @@ async def get_spectrograph_status(spectrographs: list[str] = ["sp1", "sp2", "sp3
     return response
 
 
+@overload
+async def read_thermistors_influxdb(
+    thermistor: str,
+    interval: None,
+) -> bool:
+    ...
+
+
+@overload
+async def read_thermistors_influxdb(
+    thermistor: None,
+    interval: None,
+) -> dict[str, bool]:
+    ...
+
+
+@overload
+async def read_thermistors_influxdb(
+    thermistor: str | None,
+    interval: float,
+) -> pandas.DataFrame:
+    ...
+
+
+async def read_thermistors_influxdb(
+    thermistor: str | None = None,
+    interval: float | None = None,
+) -> bool | dict[str, bool] | pandas.DataFrame:
+    """Reads the thermistors by querying InfluxDB over the API."""
+
+    api_url: str = config["api.url"]
+
+    if thermistor is not None:
+        route = f"/spectrographs/thermistors/{thermistor}"
+    else:
+        route = "/spectrographs/thermistors"
+
+    if interval is not None:
+        route += f"?interval={interval}"
+
+    async with httpx.AsyncClient(base_url=api_url) as client:
+        response = await client.get(route)
+
+        if response.status_code != 200:
+            raise httpx.HTTPError(f"Invalid response from API: {response.status_code}")
+
+    if interval is not None:
+        df = pandas.DataFrame(**response.json())
+        df["time"] = pandas.to_datetime(df["time"])
+        return df
+
+    return response.json()
+
+
 async def read_thermistors() -> dict[str, bool]:
-    """Reads the thermistors."""
+    """Reads the thermistors directly by connecting to the device.."""
 
     host = config["thermistors.host"]
     port = config["thermistors.port"]

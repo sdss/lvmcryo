@@ -17,7 +17,6 @@ defaults:
   log_path: '/data/logs/ln2fills/{timestamp}'
   write_measurements: true
   measurements_path: '/data/logs/ln2fills/{timestamp}'
-  measurements_interval: 10
   measurements_extra_time: 0
   generate_qa: true
   qa_path: '/data/logs/ln2fills/{timestamp}'
@@ -52,11 +51,12 @@ valves:
     actor: lvmnps.sp3
     outlet: b3
   z3:
-    actor: lvmnps.sp3
-    outlet: z3
+    actor: lvmnps.calib
+    outlet: outlet_7
   purge:
-    actor: lvmnps.sp1
-    outlet: purge
+    actor: lvmnps.calib
+    outlet: outlet8
+    thermistor: supply
 
 limits:
   pressure:
@@ -73,7 +73,11 @@ limits:
     max: 360
 
 api:
-  url: http://localhost:8888
+  url: http://lvm-hub.lco.cl:8080/restapi/
+
+rabbitmq:
+  host: lvm-hub.lco.cl
+  port: 5672
 
 thermistors:
   host: 10.8.38.180

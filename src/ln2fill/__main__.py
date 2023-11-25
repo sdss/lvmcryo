@@ -31,13 +31,13 @@ LOCKFILE = pathlib.Path("/data/ln2fill.lock")
 
 def update_options(
     ctx: click.Context,
-    use_internal: bool,
+    use_defaults: bool,
     configuration_file: str | None = None,
     **options: Unpack[OptionsType],
 ):
     """Updates the input options using defaults."""
 
-    if use_internal is True and configuration_file is not None:
+    if use_defaults is True and configuration_file is not None:
         raise click.UsageError(
             "--use-internal and --configuration-file are mutually exclusive.",
         )
@@ -47,13 +47,21 @@ def update_options(
     internal_config = read_yaml_file(pathlib.Path(__file__).parent / "config.yaml")
 
     # Select the source of defaults, if any.
-    if use_internal:
-        defaults = internal_config
+    if use_defaults:
+        defaults = internal_config["defaults"]
+
     elif configuration_file is not None:
-        defaults = read_yaml_file(configuration_file)
+        new_config = read_yaml_file(configuration_file)
+
+        # Get defaults from the new configuration file. This fully overrides
+        # any internal defaults.
+        defaults = Configuration(new_config.get("defaults", {}))
+
+        # Update global config.
         config._BASE_CONFIG_FILE = config._CONFIG_FILE
         config._CONFIG_FILE = configuration_file
         config.reload()
+
     else:
         defaults = Configuration({})
 
@@ -64,7 +72,7 @@ def update_options(
         if source == click.core.ParameterSource.COMMANDLINE:
             continue
 
-        if (default_value := defaults[f"defaults.{option}"]) is not None:
+        if (default_value := defaults[option]) is not None:
             options[option] = default_value
 
     # Now go one by one over the options that may need to be adjusted.
@@ -144,17 +152,17 @@ def update_options(
     default="purge-and-fill",
 )
 @click.option(
-    "--use-internal",
-    "-I",
+    "--use-defaults",
+    "-D",
     is_flag=True,
     help="Uses the internal configuration file to set the default values. "
-    "Options explicitely defined will still override defaults.",
+    "Options explicitely defined will still override the defaults.",
 )
 @click.option(
     "--configuration-file",
     type=click.Path(exists=True, dir_okay=False),
-    help="The configuration file to use to set the default values. "
-    "Incompatible with --use-internal.",
+    help="The configuration file to use to set the default values and other options. "
+    "Incompatible with --use-defaults.",
 )
 @click.option(
     "--cameras",
@@ -267,12 +275,6 @@ def update_options(
     "current directory.",
 )
 @click.option(
-    "--measurements-interval",
-    type=float,
-    default=10,
-    help="Interval, in seconds, for cryostat measurements.",
-)
-@click.option(
     "--measurements-extra-time",
     type=float,
     default=0,
@@ -315,7 +317,7 @@ def update_options(
 def ln2fill_cli(
     ctx,
     action: str,
-    use_internal: bool = False,
+    use_defaults: bool = False,
     configuration_file: str | None = None,
     **options: Unpack[OptionsType],
 ):
@@ -331,7 +333,7 @@ def ln2fill_cli(
 
     options = update_options(
         ctx=ctx,
-        use_internal=use_internal,
+        use_defaults=use_defaults,
         configuration_file=configuration_file,
         **options,
     )

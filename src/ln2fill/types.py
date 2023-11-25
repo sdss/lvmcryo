@@ -35,7 +35,6 @@ class OptionsType(TypedDict):
     log_path: Optional[str]
     write_measurements: bool
     measurements_path: Optional[str]
-    measurements_interval: float
     measurements_extra_time: float
     generate_qa: bool
     qa_path: Optional[str]
