@@ -11,12 +11,14 @@ from __future__ import annotations
 import datetime
 import logging
 import pathlib
+import warnings
 
 from typing import Unpack
 
 import click
 
 from sdsstools import Configuration, read_yaml_file
+from sdsstools.daemonizer import cli_coro
 
 from ln2fill.tools import is_container
 
@@ -48,7 +50,7 @@ def update_options(
 
     # Select the source of defaults, if any.
     if use_defaults:
-        defaults = internal_config["defaults"]
+        defaults = Configuration(internal_config["defaults"])
 
     elif configuration_file is not None:
         new_config = read_yaml_file(configuration_file)
@@ -134,15 +136,70 @@ def update_options(
             options["qa_path"] = "./"
 
     # Determine if we should run interactively.
-    if is_container():
-        options["interactive"] = "no"
-    elif options["interactive"] == "auto":
-        options["interactive"] = "yes"
+    if options["interactive"] == "auto":
+        if is_container():
+            options["interactive"] = "no"
+        else:
+            options["interactive"] = "yes"
+    elif options["interactive"] == "yes":
+        if is_container():
+            warnings.warn("Interactive mode may not work in containers.", UserWarning)
 
-    if options["interactive"] == "no":
-        options["no_prompt"] = True
+    if options["no_prompt"] is None:
+        if options["interactive"] == "yes":
+            options["no_prompt"] = True
+        else:
+            options["no_prompt"] = False
+
+    if (
+        options["no_prompt"]
+        and options["use_thermistors"] is False
+        and (options["purge_time"] is None or options["fill_time"] is None)
+    ):
+        raise ValueError(
+            "Cannot run without thermistors and without purge and fill times."
+        )
 
     return options.copy()
+
+
+async def handle_fill(**options: Unpack[OptionsType]):
+    """Handles the purge/fill process."""
+
+    from ln2fill.core import LN2Handler
+
+    if options["quiet"]:
+        log.sh.setLevel(logging.ERROR)
+    elif options["verbose"]:
+        log.sh.setLevel(logging.DEBUG)
+
+    if options["write_log"]:
+        assert options["log_path"]
+        log_path = pathlib.Path(options["log_path"])
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log.start_file_logger(str(log_path), mode="w", rotating=False)
+
+    if options["cameras"] is None:
+        raise RuntimeError("No cameras specified.")
+
+    if isinstance(options["cameras"], str):
+        cameras = list(map(lambda s: s.strip(), options["cameras"].split(",")))
+    else:
+        cameras = options["cameras"]
+
+    interactive = True if options["interactive"] == "yes" else False
+
+    handler = LN2Handler(cameras=cameras, interactive=interactive)
+
+    await handler.check()
+
+    max_purge_time = options["purge_time"] or options["max_purge_time"]
+    await handler.purge(
+        use_thermistor=options["use_thermistors"],
+        min_purge_time=options["min_purge_time"],
+        max_purge_time=max_purge_time,
+        prompt=not options["no_prompt"],
+    )
 
 
 @click.command(name="ln2fill")
@@ -181,8 +238,9 @@ def update_options(
 @click.option(
     "--no-prompt",
     is_flag=True,
-    help="Does not prompt for confirmation. If --interactive yes or auto, prompting "
-    "is determined automatically.",
+    help="Does not prompt the user to finish or abort a purge/fill. Prompting is "
+    "required if --fill-time or --purge-time are not provided and thermistors "
+    "are not used.",
 )
 @click.option(
     "--check-pressure/--no-check-pressure",
@@ -210,38 +268,52 @@ def update_options(
 @click.option(
     "--purge-time",
     type=float,
-    help="Purge time in seconds. If not provided, the thermistors will be used.",
+    help="Purge time in seconds. If --use-thermistors, this is effectively the "
+    "maximum purge time.",
 )
 @click.option(
     "--min-purge-time",
     type=float,
-    help="Minimum purge time in seconds. Defaults to internal value. Disable with -1.",
+    help="Minimum purge time in seconds. Defaults to internal value.",
 )
 @click.option(
     "--max-purge-time",
     type=float,
-    help="Maximum purge time in seconds. Defaults to internal value. Disable with -1.",
+    help="Maximum purge time in seconds. Defaults to internal value.",
 )
 @click.option(
     "--fill-time",
     type=float,
-    help="Fill time in seconds. If not provided, the thermistors will be used.",
+    help="Fill time in seconds. If --use-thermistors, this is effectively the "
+    "maximum fill time.",
 )
 @click.option(
     "--min-fill-time",
     type=float,
-    help="Minimum fill time in seconds. Defaults to internal value. Disable with -1.",
+    help="Minimum fill time in seconds. Defaults to internal value.",
 )
 @click.option(
     "--max-fill-time",
     type=float,
-    help="Maximum fill time in seconds. Defaults to internal value. Disable with -1.",
+    help="Maximum fill time in seconds. Defaults to internal value.",
+)
+@click.option(
+    "--use-thermistors/--no-use-thermistors",
+    default=True,
+    show_default=True,
+    help="Use thermistor values to determine purge/fill time.",
 )
 @click.option(
     "--quiet",
     "-q",
     is_flag=True,
     help="Disable logging to stdout.",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Outputs additional information to stdout.",
 )
 @click.option(
     "--write-json",
@@ -314,7 +386,8 @@ def update_options(
     help="Comma-separated list of email recipients. Required if --email is set.",
 )
 @click.pass_context
-def ln2fill_cli(
+@cli_coro()
+async def ln2fill_cli(
     ctx,
     action: str,
     use_defaults: bool = False,
@@ -336,14 +409,7 @@ def ln2fill_cli(
         **options,
     )
 
-    if options["quiet"]:
-        log.sh.setLevel(logging.ERROR)
-
-    if options["write_log"]:
-        assert options["log_path"]
-        log_path = pathlib.Path(options["log_path"])
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        log.start_file_logger(str(log_path), mode="w", rotating=False)
+    await handle_fill(**options)
 
 
 def main():

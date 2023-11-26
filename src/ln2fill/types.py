@@ -16,7 +16,7 @@ class OptionsType(TypedDict):
 
     cameras: Optional[str]
     interactive: str
-    no_prompt: bool
+    no_prompt: Optional[bool]
     check_pressure: bool
     check_temperature: bool
     max_pressure: float
@@ -29,6 +29,8 @@ class OptionsType(TypedDict):
     fill_time: Optional[float]
     min_fill_time: float
     max_fill_time: float
+    use_thermistors: bool
+    verbose: bool
     quiet: bool
     write_json: bool
     write_log: bool

@@ -163,12 +163,13 @@ async def valve_on_off(
         else:
             command_string = f"on --off-after {timeout} {outlet}"
 
-    async with CluClient() as client:
-        command = await client.send_command(actor, command_string)
-        if command.status.did_fail:
-            raise RuntimeError(f"Command '{actor} {command_string}' failed")
+    # async with CluClient() as client:
+    #     command = await client.send_command(actor, command_string)
+    #     if command.status.did_fail:
+    #         raise RuntimeError(f"Command '{actor} {command_string}' failed")
 
     if is_script:
+        return 1
         script_data = command.replies.get("script")
         return script_data["thread_id"]
 
@@ -190,9 +191,7 @@ async def cancel_nps_threads(actor: str, thread_id: int | None = None):
     command_string = f"scripts stop {thread_id if thread_id else ''}"
 
     async with CluClient() as client:
-        command = await client.send_command(actor, command_string)
-        if command.status.did_fail:
-            raise RuntimeError(f"Command '{actor} {command_string}' failed")
+        await client.send_command(actor, command_string)
 
 
 async def close_all_valves():
@@ -405,7 +404,6 @@ class TimerProgressBar:
 
         self.progress.update(
             task_id,
-            completed=completed,
             description=f"[green] {complete_description} ",
         )
         self.progress.refresh()
@@ -417,9 +415,7 @@ class TimerProgressBar:
             raise ValueError("Task ID not found.")
 
         _task = self._tasks[task_id]
-        _task.cancel()
-        with suppress(asyncio.CancelledError):
-            await _task
+        await cancel_task(_task)
 
         del self._tasks[task_id]
 
@@ -428,3 +424,14 @@ class TimerProgressBar:
             self.progress.update(task_id, visible=False)
 
         await asyncio.sleep(1)  # Extra time for renders.
+
+
+async def cancel_task(task: asyncio.Future | None):
+    """Safely cancels a task."""
+
+    if task is None or task.done():
+        return
+
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
