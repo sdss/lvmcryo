@@ -8,9 +8,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import pathlib
+import signal
+import sys
 import warnings
 
 from typing import Unpack
@@ -166,7 +169,7 @@ def update_options(
 async def handle_fill(**options: Unpack[OptionsType]):
     """Handles the purge/fill process."""
 
-    from ln2fill.core import LN2Handler
+    from ln2fill.handlers import LN2Handler
 
     if options["quiet"]:
         log.sh.setLevel(logging.ERROR)
@@ -193,6 +196,18 @@ async def handle_fill(**options: Unpack[OptionsType]):
 
     await handler.check()
 
+    async def signal_handler():
+        log.error("User aborted the process. Closing all valves before exiting.")
+        await handler.abort(only_active=False)
+        log.error("All valves closed. Exiting.")
+        asyncio.get_running_loop().call_soon(sys.exit, 0)
+
+    for signame in ("SIGINT", "SIGTERM"):
+        asyncio.get_running_loop().add_signal_handler(
+            getattr(signal, signame),
+            lambda: asyncio.create_task(signal_handler()),
+        )
+
     max_purge_time = options["purge_time"] or options["max_purge_time"]
     await handler.purge(
         use_thermistor=options["use_thermistors"],
@@ -201,6 +216,13 @@ async def handle_fill(**options: Unpack[OptionsType]):
         prompt=not options["no_prompt"],
     )
 
+    max_fill_time = options["fill_time"] or options["max_fill_time"]
+    await handler.fill(
+        use_thermistors=options["use_thermistors"],
+        min_fill_time=options["min_fill_time"],
+        max_fill_time=max_fill_time,
+        prompt=not options["no_prompt"],
+    )
 
 @click.command(name="ln2fill")
 @click.argument(
