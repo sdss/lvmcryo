@@ -9,21 +9,23 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from time import time
 
 from pydantic import Field, model_validator
 from pydantic.dataclasses import dataclass
+from rich.progress import TaskID
 
-from sdsstools.logger import SDSSLogger, get_logger
-
-from ln2fill import config
+from ln2fill import config, log
 from ln2fill.tools import (
+    TimerProgressBar,
     cancel_nps_threads,
     is_container,
     read_thermistors,
     valve_on_off,
 )
+
+
+PROGRESS_BAR = TimerProgressBar(console=log.rich_console)
 
 
 @dataclass
@@ -103,7 +105,7 @@ class ThermistorHandler:
             await asyncio.sleep(self.interval)
 
         if close_valve:
-            await self.valve_handler.set_state(False)
+            await self.valve_handler.finish_fill()
 
 
 @dataclass
@@ -120,16 +122,19 @@ class ValveHandler:
         The channel of the thermistor associated with the valve.
     nps_actor
         The NPS actor that command the valve.
+    show_progress_bar
+        Whether to show a progress bar during fills.
 
     """
 
     valve: str
     thermistor_channel: str = Field(None, repr=False)
     nps_actor: str = Field(None, repr=False)
-    max_open_time: float | None = Field(None, ge=5.0, repr=False)
+    max_open_time: float = Field(None, ge=5.0, repr=False)
+    show_progress_bar: bool = Field(True, repr=False)
 
     @model_validator(mode="after")
-    def validate_valve(self):
+    def validate_fields(self):
         if self.valve not in config["valves"]:
             raise ValueError(f"Unknown valve {self.valve!r}.")
 
@@ -142,14 +147,80 @@ class ValveHandler:
             if self.nps_actor is None:
                 raise ValueError("Cannot find NPS actor for valve {self.valve!r}.")
 
+        # Some reasonable, last resource values.
+        if self.max_open_time is None:
+            if self.valve == "purge":
+                self.max_open_time = 2000
+            else:
+                self.max_open_time = 600
+
         return self
 
     def __post_init__(self):
         self.thermistor = ThermistorHandler(self)
 
         self._thread_id: int | None = None
+        self._progress_bar_id: TaskID | None = None
 
-    async def set_state(
+    async def start_fill(
+        self,
+        fill_time: float | None = None,
+        use_thermistor: bool = True,
+    ):
+        """Starts a fill.
+
+        Parameters
+        ----------
+        fill_time
+            The time to keep the valve open. If ``None``, defaults to
+            the ``max_open_time`` value.
+        use_thermistor
+            Whether to use the thermistor to close the valve. If ``True`` and
+            ``fill_time`` is not ``None``, ``fill_time`` become the maximum
+            open time.
+
+        """
+
+        if use_thermistor:
+            if fill_time is not None:
+                timeout = fill_time
+            else:
+                timeout = self.max_open_time
+        else:
+            if fill_time is None:
+                raise ValueError("fill_time is required with use_thermistor=False")
+            timeout = fill_time
+
+        await self._set_state(True, timeout=timeout, use_script=True)
+
+        if use_thermistor:
+            await self.thermistor.start_monitoring()
+
+        if self.show_progress_bar:
+            if self.valve.lower() == "purge":
+                initial_description = "Purge in progress ..."
+                complete_description = "Purge complete"
+            else:
+                initial_description = "Fill in progress ..."
+                complete_description = "Fill complete"
+
+            self._progress_bar_id = await PROGRESS_BAR.add_timer(
+                self.max_open_time,
+                label=self.valve,
+                initial_description=initial_description,
+                complete_description=complete_description,
+            )
+
+    async def finish_fill(self):
+        """Finishes the fill, closing the valve."""
+
+        await self._set_state(False)
+
+        if self._progress_bar_id is not None:
+            await PROGRESS_BAR.stop_timer(self._progress_bar_id)
+            self._progress_bar_id = None
+
+    async def _set_state(
         self,
         on: bool,
         use_script: bool = True,
@@ -196,24 +267,9 @@ class LN2Handler:
     interactive
         Whether to show interactive features. If ``None``, interactivity will
         be determined depending on the console type.
-    log
-        A logger instance. Must be an ``sdsstools.logger.SDSSLogger`` instance
-        or `None`, in which case a new logger will be created.
-    quiet
-        If `True`, only outputs error messages.
-
     """
 
-    def __init__(
-        self,
-        interactive: bool | None = None,
-        log: SDSSLogger | None = None,
-        quiet: bool = False,
-    ):
-        self.log = log or get_logger("lvm-ln2fill", use_rich_handler=True)
-        if quiet:
-            self.log.sh.setLevel(logging.ERROR)
-
+    def __init__(self, interactive: bool | None = None):
         if interactive is None:
             self.interactive = False if is_container() else True
         else:

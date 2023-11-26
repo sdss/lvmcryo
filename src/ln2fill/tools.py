@@ -11,13 +11,18 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import time
 import warnings
+from contextlib import suppress
+from functools import partial
 
 from typing import Any, overload
 
 import asyncudp
 import httpx
 import pandas
+from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
 
 from clu import AMQPClient
 
@@ -321,3 +326,105 @@ def is_container():
         return False
 
     return True
+
+
+class TimerProgressBar:
+    """A progress bar with a timer."""
+
+    def __init__(self, console: Console | None = None):
+        self.console = console
+
+        self.progress = Progress(
+            TextColumn("[yellow]({task.fields[label]})"),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=None),
+            MofNCompleteColumn(),
+            TextColumn("s"),
+            expand=True,
+            transient=False,
+            auto_refresh=True,
+            console=self.console,  # Need to use same console as logger.
+        )
+
+        self._tasks: dict[TaskID, asyncio.Task] = {}
+
+    async def add_timer(
+        self,
+        max_time: float,
+        label: str = "",
+        initial_description: str = "Fill in progress ...",
+        complete_description: str = "Fill complete",
+    ):
+        """Starts the timer."""
+
+        task_id = self.progress.add_task(
+            f"[blue] {initial_description} ", total=int(max_time), label=label
+        )
+
+        self.progress.start()
+
+        start_time = time.time()
+
+        async def update_timer():
+            elapsed = 0
+            while True:
+                if elapsed > max_time:
+                    break
+
+                self.progress.update(task_id, advance=1, visible=True)
+
+                await asyncio.sleep(1)
+                elapsed += 1
+
+        done_timer_partial = partial(
+            self._done_timer,
+            start_time,
+            max_time,
+            complete_description,
+            task_id,
+        )
+
+        _task = asyncio.create_task(update_timer())
+        _task.add_done_callback(done_timer_partial)
+
+        self._tasks[task_id] = _task
+
+        return task_id
+
+    def _done_timer(
+        self,
+        start_time: float,
+        max_time: float,
+        complete_description: str,
+        task_id: TaskID,
+        *_,
+    ):
+        completed = int(time.time() - start_time)
+        if completed > max_time:
+            completed = int(max_time)
+
+        self.progress.update(
+            task_id,
+            completed=completed,
+            description=f"[green] {complete_description} ",
+        )
+        self.progress.refresh()
+
+    async def stop_timer(self, task_id: TaskID, clear: bool = False):
+        """Cancels a timer."""
+
+        if task_id not in self._tasks:
+            raise ValueError("Task ID not found.")
+
+        _task = self._tasks[task_id]
+        _task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _task
+
+        del self._tasks[task_id]
+
+        # self._done_timer()
+        if clear:
+            self.progress.update(task_id, visible=False)
+
+        await asyncio.sleep(1)  # Extra time for renders.

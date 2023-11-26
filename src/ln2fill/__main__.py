@@ -16,11 +16,11 @@ from typing import Unpack
 
 import click
 
-from sdsstools import Configuration, get_logger, read_yaml_file
+from sdsstools import Configuration, read_yaml_file
 
 from ln2fill.tools import is_container
 
-from . import config
+from . import config, log
 from .types import OptionsType
 
 
@@ -328,8 +328,6 @@ def ln2fill_cli(
     elif action == "clear":
         LOCKFILE.unlink(missing_ok=True)
         return
-
-    log = get_logger("lvm-ln2fill", use_rich_handler=True)
 
     options = update_options(
         ctx=ctx,
