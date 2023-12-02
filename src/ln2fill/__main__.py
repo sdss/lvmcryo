@@ -224,6 +224,7 @@ async def handle_fill(**options: Unpack[OptionsType]):
         prompt=not options["no_prompt"],
     )
 
+
 @click.command(name="ln2fill")
 @click.argument(
     "ACTION",
