@@ -24,6 +24,13 @@ from ln2fill.types import OptionsType
 __all__ = ["ln2_runner"]
 
 
+async def signal_handler(handler: LN2Handler):
+    log.error("User aborted the process. Closing all valves before exiting.")
+    await handler.abort(only_active=False)
+    log.error("All valves have been closed. Exiting.")
+    asyncio.get_running_loop().call_soon(sys.exit, 0)
+
+
 async def ln2_runner(**options: Unpack[OptionsType]):
     """Runs the purge/fill process.
 
@@ -56,16 +63,11 @@ async def ln2_runner(**options: Unpack[OptionsType]):
 
     await handler.check()
 
-    async def signal_handler():
-        log.error("User aborted the process. Closing all valves before exiting.")
-        await handler.abort(only_active=False)
-        log.error("All valves closed. Exiting.")
-        asyncio.get_running_loop().call_soon(sys.exit, 0)
-
+    # Register signals that will trigger a valve shutdown and clean exit.
     for signame in ("SIGINT", "SIGTERM"):
         asyncio.get_running_loop().add_signal_handler(
             getattr(signal, signame),
-            lambda: asyncio.create_task(signal_handler()),
+            lambda: asyncio.create_task(signal_handler(handler)),
         )
 
     max_purge_time = options["purge_time"] or options["max_purge_time"]
