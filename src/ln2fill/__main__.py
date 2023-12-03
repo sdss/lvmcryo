@@ -8,12 +8,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import datetime
-import logging
 import pathlib
-import signal
-import sys
 import warnings
 
 from typing import Unpack
@@ -23,10 +19,8 @@ import click
 from sdsstools import Configuration, read_yaml_file
 from sdsstools.daemonizer import cli_coro
 
-from ln2fill.tools import is_container
-
-from . import config, log
-from .types import OptionsType
+from ln2fill import config, log
+from ln2fill.types import OptionsType
 
 
 VALID_ACTIONS = ["purge-and-fill", "purge", "fill", "abort", "clear"]
@@ -41,6 +35,8 @@ def update_options(
     **options: Unpack[OptionsType],
 ):
     """Updates the input options using defaults."""
+
+    from ln2fill.tools import is_container
 
     if use_defaults is True and configuration_file is not None:
         raise click.UsageError(
@@ -164,65 +160,6 @@ def update_options(
         )
 
     return options.copy()
-
-
-async def handle_fill(**options: Unpack[OptionsType]):
-    """Handles the purge/fill process."""
-
-    from ln2fill.handlers import LN2Handler
-
-    if options["quiet"]:
-        log.sh.setLevel(logging.ERROR)
-    elif options["verbose"]:
-        log.sh.setLevel(logging.DEBUG)
-
-    if options["write_log"]:
-        assert options["log_path"]
-        log_path = pathlib.Path(options["log_path"])
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        log.start_file_logger(str(log_path), mode="w", rotating=False)
-
-    if options["cameras"] is None:
-        raise RuntimeError("No cameras specified.")
-
-    if isinstance(options["cameras"], str):
-        cameras = list(map(lambda s: s.strip(), options["cameras"].split(",")))
-    else:
-        cameras = options["cameras"]
-
-    interactive = True if options["interactive"] == "yes" else False
-
-    handler = LN2Handler(cameras=cameras, interactive=interactive)
-
-    await handler.check()
-
-    async def signal_handler():
-        log.error("User aborted the process. Closing all valves before exiting.")
-        await handler.abort(only_active=False)
-        log.error("All valves closed. Exiting.")
-        asyncio.get_running_loop().call_soon(sys.exit, 0)
-
-    for signame in ("SIGINT", "SIGTERM"):
-        asyncio.get_running_loop().add_signal_handler(
-            getattr(signal, signame),
-            lambda: asyncio.create_task(signal_handler()),
-        )
-
-    max_purge_time = options["purge_time"] or options["max_purge_time"]
-    await handler.purge(
-        use_thermistor=options["use_thermistors"],
-        min_purge_time=options["min_purge_time"],
-        max_purge_time=max_purge_time,
-        prompt=not options["no_prompt"],
-    )
-
-    max_fill_time = options["fill_time"] or options["max_fill_time"]
-    await handler.fill(
-        use_thermistors=options["use_thermistors"],
-        min_fill_time=options["min_fill_time"],
-        max_fill_time=max_fill_time,
-        prompt=not options["no_prompt"],
-    )
 
 
 @click.command(name="ln2fill")
@@ -419,8 +356,13 @@ async def ln2fill_cli(
 ):
     """CLI for the LN2 purge and fill utilities."""
 
+    from ln2fill.runner import ln2_runner
+    from ln2fill.tools import close_all_valves
+
     if action == "abort":
-        pass
+        log.warning("Closing all valves.")
+        await close_all_valves()
+        return
     elif action == "clear":
         LOCKFILE.unlink(missing_ok=True)
         return
@@ -432,7 +374,7 @@ async def ln2fill_cli(
         **options,
     )
 
-    await handle_fill(**options)
+    await ln2_runner(**options)
 
 
 def main():
