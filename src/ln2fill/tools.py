@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import pathlib
 import re
 import time
 import warnings
@@ -21,6 +23,7 @@ from typing import Any, overload
 import asyncudp
 import httpx
 import pandas
+from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
 
@@ -221,7 +224,7 @@ async def get_spectrograph_status(spectrographs: list[str] = ["sp1", "sp2", "sp3
         for camera in ["r", "b", "z"]:
             cryostat = f"{camera}{spec[-1]}"
             response[cryostat] = {}
-            for label in ["ln2", "pressure"]:
+            for label in ["ccd", "ln2", "pressure"]:
                 cryostat_label = f"{cryostat}_{label}"
                 if cryostat_label in api_response:
                     response[cryostat][label] = api_response[cryostat_label]
@@ -434,3 +437,86 @@ async def cancel_task(task: asyncio.Future | None):
     task.cancel()
     with suppress(asyncio.CancelledError):
         await task
+
+
+def render_template(
+    template: str | None = None,
+    file: str | os.PathLike | None = None,
+    render_data: dict[str, Any] = {},
+):
+    """Renders a template using Jinja2.
+
+    Parameters
+    ----------
+    template
+        The template to render. If `None`, `file` must be defined.
+    file
+        The path to the file to render. If `None`, `template` must be defined.
+    render_data
+        The data to pass to the template.
+
+    """
+
+    if template is not None and file is not None:
+        raise ValueError("Only one of template or file can be defined.")
+
+    if template is not None:
+        templates_path = pathlib.Path(__file__).parent / "templates"
+        loader = FileSystemLoader(templates_path)
+    elif file is not None:
+        dirname = pathlib.Path(file).parent
+        loader = FileSystemLoader(dirname)
+        template = dirname.name
+    else:
+        raise ValueError("Either template or file must be defined.")
+
+    env = Environment(
+        loader=loader,
+        lstrip_blocks=True,
+        trim_blocks=True,
+    )
+    html_template = env.get_template(template)
+
+    return html_template.render(**render_data)
+
+
+def JSONWriter(filename: str | os.PathLike | None, key: str, data: Any):
+    """Writes or updates a JSON file.
+
+    Parameters
+    ----------
+    filename
+        The path to the file to write.
+    key
+        The key to be updated. To update a nested key, use dot notation, e.g.,
+        ``key1.subkey2.subsubkey3``.
+    data
+        Data to set as the value for ``key``.
+
+    """
+
+    if filename is None:
+        return
+
+    filename = pathlib.Path(filename)
+
+    json_: dict[str, Any]
+    if filename.exists():
+        json_ = json.load(open(filename))
+    else:
+        json_ = {}
+
+    current = json_
+    for ii, kk in enumerate(key.split(".")):
+        if ii == len(key.split(".")) - 1:
+            current[kk] = data
+            break
+
+        if kk not in current or not isinstance(current[kk], dict):
+            current[kk] = {}
+
+        current = current[kk]
+
+    json.dump(json_, open(filename, "w"), indent=4)
+
+    return json_
