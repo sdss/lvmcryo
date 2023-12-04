@@ -8,19 +8,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
+import logging
 import pathlib
 import warnings
-
-from typing import Unpack
+from tempfile import NamedTemporaryFile
 
 import click
+from pydantic import BaseModel
 
 from sdsstools import Configuration, read_yaml_file
 from sdsstools.daemonizer import cli_coro
 
 from ln2fill import config, log
-from ln2fill.types import OptionsType
+from ln2fill.handlers.ln2 import LN2Handler
+from ln2fill.notifier import Notifier
+from ln2fill.runner import collect_mesurement_data, notify_failure
+from ln2fill.tools import JSONWriter
 
 
 VALID_ACTIONS = ["purge-and-fill", "purge", "fill", "abort", "clear"]
@@ -28,11 +33,45 @@ VALID_ACTIONS = ["purge-and-fill", "purge", "fill", "abort", "clear"]
 LOCKFILE = pathlib.Path("/data/ln2fill.lock")
 
 
-def update_options(
+class OptionsModel(BaseModel):
+    """CLI options."""
+
+    cameras: str | None
+    interactive: str
+    no_prompt: bool | None
+    check_pressure: bool
+    check_temperature: bool
+    max_pressure: float
+    min_pressure: float
+    max_temperature: float
+    min_temperature: float
+    purge_time: float | None
+    min_purge_time: float
+    max_purge_time: float
+    fill_time: float | None
+    min_fill_time: float
+    max_fill_time: float
+    use_thermistors: bool
+    verbose: bool
+    quiet: bool
+    write_json: bool
+    json_path: str | None
+    write_log: bool
+    log_path: str | None
+    write_measurements: bool
+    measurements_path: str | None
+    measurements_extra_time: float
+    generate_qa: bool
+    qa_path: str | None
+    notify: bool
+    dry_run: bool
+
+
+def process_cli_options(
     ctx: click.Context,
+    options: OptionsModel,
     use_defaults: bool,
     configuration_file: str | None = None,
-    **options: Unpack[OptionsType],
 ):
     """Updates the input options using defaults."""
 
@@ -68,17 +107,17 @@ def update_options(
 
     # Update options. If the option value comes from the command line (i.e.,
     # explicitely defined by the user), leave it be. Otherwise use the default.
-    for option in options:
+    for option in options.model_fields_set:
         source = ctx.get_parameter_source(option)
         if source == click.core.ParameterSource.COMMANDLINE:
             continue
 
         if (default_value := defaults[option]) is not None:
-            options[option] = default_value
+            setattr(options, option, default_value)
 
     # Now go one by one over the options that may need to be adjusted.
-    if options["cameras"] is None:
-        options["cameras"] = internal_config["defaults.cameras"]
+    if options.cameras is None:
+        options.cameras = internal_config["defaults.cameras"]
 
     for option in [
         "max_pressure",
@@ -88,7 +127,7 @@ def update_options(
         "min_fill_time",
         "max_fill_time",
     ]:
-        value = options[option]
+        value = getattr(options, option)
 
         if isinstance(value, (float, int)):
             continue
@@ -97,69 +136,80 @@ def update_options(
             internal_value = internal_config[f"limits.{label}.{minmax}"]
             if internal_value is None:
                 raise ValueError(f"Cannot find internal value for {option!r},")
-            options[option] = internal_value
+            setattr(options, option, internal_value)
         elif isinstance(value, str) and value.startswith("{{"):
             param = value.strip("{}")
-            options[option] = internal_config[f"{param}"]
+            setattr(options, option, internal_config[f"{param}"])
         else:
             raise ValueError(f"Invalid value {value} for parameter {option!r}.")
 
     timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
     # Define log path.
-    if options["write_log"] or options["log_path"]:
-        options["write_log"] = True
-        if options["log_path"]:
-            options["log_path"] = options["log_path"].format(timestamp=timestamp)
-            if not options["log_path"].endswith(".log"):
-                options["log_path"] += "/ln2fill.log"
+    if options.write_log or options.log_path:
+        options.write_log = True
+        if options.log_path:
+            options.log_path = options.log_path.format(timestamp=timestamp)
+            if not options.log_path.endswith(".log"):
+                options.log_path += "/ln2fill.log"
         else:
-            options["log_path"] = "./ln2fill.log"
+            options.log_path = "./ln2fill.log"
 
-    log_path = pathlib.Path(options["log_path"]) if options["log_path"] else None
+    log_path = pathlib.Path(options.log_path) if options.log_path else None
 
     # Define measurements path.
-    if options["write_measurements"] or options["measurements_path"]:
-        options["write_measurements"] = True
-        if options["measurements_path"] is None and log_path:
-            options["measurements_path"] = str(log_path.parent / "measurements.parquet")
-        else:
-            options["measurements_path"] = "./ln2fill.parquet"
+    if options.write_measurements or options.measurements_path:
+        options.write_measurements = True
+        if options.measurements_path is None:
+            if log_path:
+                options.measurements_path = str(log_path.parent / "ln2fill.parquet")
+            else:
+                options.measurements_path = "./ln2fill.parquet"
 
     # Define the QA path
-    if options["generate_qa"] or options["qa_path"]:
-        options["generate_qa"] = True
-        if options["qa_path"] is None and log_path:
-            options["qa_path"] = str(log_path.parent)
-        else:
-            options["qa_path"] = "./"
+    if options.generate_qa or options.qa_path:
+        options.generate_qa = True
+        if options.qa_path is None:
+            if log_path:
+                options.qa_path = str(log_path.parent)
+            else:
+                options.qa_path = "./"
+
+    # Define the JSON path
+    if options.write_json or options.write_json:
+        options.write_json = True
+        if options.json_path is None:
+            if log_path is not None:
+                options.json_path = str(log_path.parent / "ln2fill.json")
+            else:
+                options.json_path = "./ln2fill.json"
 
     # Determine if we should run interactively.
-    if options["interactive"] == "auto":
+    if options.interactive == "auto":
         if is_container():
-            options["interactive"] = "no"
+            options.interactive = "no"
         else:
-            options["interactive"] = "yes"
-    elif options["interactive"] == "yes":
+            options.interactive = "yes"
+    elif options.interactive == "yes":
         if is_container():
             warnings.warn("Interactive mode may not work in containers.", UserWarning)
 
-    if options["no_prompt"] is None:
-        if options["interactive"] == "yes":
-            options["no_prompt"] = True
+    if options.no_prompt is None:
+        if options.interactive == "yes":
+            options.no_prompt = True
         else:
-            options["no_prompt"] = False
+            options.no_prompt = False
 
     if (
-        options["no_prompt"]
-        and options["use_thermistors"] is False
-        and (options["purge_time"] is None or options["fill_time"] is None)
+        options.no_prompt
+        and options.use_thermistors is False
+        and (options.purge_time is None or options.fill_time is None)
     ):
         raise ValueError(
             "Cannot run without thermistors and without purge and fill times."
         )
 
-    return options.copy()
+    return options
 
 
 @click.command(name="ln2fill")
@@ -276,12 +326,6 @@ def update_options(
     help="Outputs additional information to stdout.",
 )
 @click.option(
-    "--write-json",
-    is_flag=True,
-    help="Writes a JSON file with the run configuration and status. "
-    "Defaults to a path relative to --log-path if defined, or the current directory.",
-)
-@click.option(
     "--write-log",
     "-S",
     is_flag=True,
@@ -292,6 +336,12 @@ def update_options(
     type=str,
     help="Path where to save the log file. Implies --write-log. "
     "Defaults to the current directory.",
+)
+@click.option(
+    "--write-json",
+    is_flag=True,
+    help="Writes a JSON file with the run configuration and status. "
+    "Defaults to a path relative to --log-path if defined, or the current directory.",
 )
 @click.option(
     "--write-measurements",
@@ -326,24 +376,15 @@ def update_options(
     "current directory.",
 )
 @click.option(
-    "--slack",
+    "--notify/--no-notify",
     is_flag=True,
-    help="Notifies the Slack channel.",
+    default=True,
+    help="Whether to send notifications of success/failure to Slack and over email.",
 )
 @click.option(
-    "--slack-route",
-    type=str,
-    help="The API route to use to send messages to Slack.",
-)
-@click.option(
-    "--email",
+    "--dry-run",
     is_flag=True,
-    help="Notifies over email after completion or failure.",
-)
-@click.option(
-    "--email-recipients",
-    type=str,
-    help="Comma-separated list of email recipients. Required if --email is set.",
+    help="Test run the code but do not actually open/close any valves.",
 )
 @click.pass_context
 @cli_coro()
@@ -352,12 +393,14 @@ async def ln2fill_cli(
     action: str,
     use_defaults: bool = False,
     configuration_file: str | None = None,
-    **options: Unpack[OptionsType],
+    **kwargs,
 ):
     """CLI for the LN2 purge and fill utilities."""
 
     from ln2fill.runner import ln2_runner
     from ln2fill.tools import close_all_valves
+
+    error: Exception | None = None
 
     if action == "abort":
         log.warning("Closing all valves.")
@@ -367,14 +410,60 @@ async def ln2fill_cli(
         LOCKFILE.unlink(missing_ok=True)
         return
 
-    options = update_options(
-        ctx=ctx,
+    options = process_cli_options(
+        ctx,
+        OptionsModel(**kwargs),
         use_defaults=use_defaults,
         configuration_file=configuration_file,
-        **options,
     )
 
-    await ln2_runner(**options)
+    if options.quiet:
+        log.sh.setLevel(logging.ERROR)
+    elif options.verbose:
+        log.sh.setLevel(logging.DEBUG)
+
+    if options.write_log and options.log_path:
+        log_path = pathlib.Path(options.log_path)
+    else:
+        # Write log to a temporary path so we can recover it for notifications.
+        log_path = pathlib.Path(NamedTemporaryFile(suffix=".fits", delete=True).name)
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log.start_file_logger(str(log_path), mode="w", rotating=False)
+
+    if options.cameras is None:
+        raise RuntimeError("No cameras specified.")
+
+    if isinstance(options.cameras, str):
+        cameras = list(map(lambda s: s.strip(), options.cameras.split(",")))
+    else:
+        cameras = options.cameras
+
+    interactive = True if options.interactive == "yes" else False
+
+    handler = LN2Handler(cameras=cameras, interactive=interactive)
+    notifier = Notifier(silent=not options.notify)
+
+    try:
+        await ln2_runner(handler, options, notifier=notifier)
+
+    except Exception as err:
+        JSONWriter(options.json_path, "times", handler.event_times.model_dump_json())
+
+        if handler.failed:
+            JSONWriter(options.json_path, "status", "failed")
+
+        await notify_failure(err, ln2_handler=handler, notifier=notifier)
+
+        error = err
+
+    await asyncio.sleep(options.measurements_extra_time)
+    if options.write_measurements and options.measurements_path:
+        measurements_path = pathlib.Path(options.measurements_path)
+        await collect_mesurement_data(handler, path=measurements_path)
+
+    if error is not None:
+        raise error
 
 
 def main():
