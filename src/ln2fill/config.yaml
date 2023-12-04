@@ -93,3 +93,5 @@ thermistors:
     channel13: r2
     channel14: b2
     channel15: z2
+
+notifications: false
