@@ -1,0 +1,84 @@
+<html>
+    <head>
+        <style>
+            {{ log_css }}
+        </style>
+    </head>
+
+    <body style="font-size: 14px">
+        <h1>An alert occurred during an LVM LN2 fill</h1>
+
+        {% if error %}
+            <div style="padding: 5px 0px">Error message was:</div>
+            <div style="padding: 5px 20px">{{ error }}</div>
+        {% else %}
+            <div style="padding: 5px 0px">No error message was provided.</div>
+        {% endif %}
+
+        <div style="padding: 5px 0px">
+            At your earliest convenience, please check the status of the LVM spectrograph system. A complete summary of the fill can be found <a href="{{ fill_url }}">here</a> and you can access Grafana plots <a href="https://lvm-grafana.lco.cl">here</a>.
+        </div>
+
+        <div style="padding: 5px 20px">
+            <table style="border-spacing: 5px 10px; border: 0px solid">
+                <tr>
+                    <td>Time of the start of the purge</td>
+                    <td style="padding-left: 20px">{{ event_times.purge_start_time.strftime('%H:%M:%S %Y-%m-%d') if event_times.purge_start_time }}</td>
+                </tr>
+                <tr>
+                    <td>Time of the start of the fill</td>
+                    <td style="padding-left: 20px">{{ event_times.fill_start_time.strftime('%H:%M:%S %Y-%m-%d') if event_times.fill_start_time }}</td>
+                </tr>
+                <tr>
+                    <td>Time when the purge or fill failed</td>
+                    <td style="padding-left: 20px">{{ event_times.fill_fail_time.strftime('%H:%M:%S %Y-%m-%d') if fill_fail_time }}</td>
+                </tr>
+            </table>
+        </div>
+
+        {% if spec_data %}
+            <div style="padding-top: 20px">Cryostat status at the time of the failure</div>
+            <hr/>
+
+            <div style="padding: 5px 20px">
+                <table style="border-spacing: 20px 20px; border: 1px solid; font-family: monospace">
+                    <tr>
+                        <th>Cryostat</th>
+                        <th>CCD Temperature (C)</th>
+                        <th>LN<subs>2</subsub>temperature (C)</th>
+                        <th>Pressure (torr)</th>
+                    </tr>
+                    {% for cryostat in spec_data %}
+                        <tr>
+                            <td style="text-align: center">{{ cryostat }}</td>
+                            {% for key, value in spec_data[cryostat].items() %}
+                                <td style="padding-left: 20px">
+                                    {% if key == "ccd" or key == "ln2" %}
+                                        {{ value | round(2) }}</td>
+                                    {% else %}
+                                        {{ "{:.2e}".format(value) }}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+
+        {% else %}
+            <div style="padding-top: 20px">Cryostat data was not available at the time of sending this email.</div>
+        {% endif %}
+
+        {% if log_blob %}
+            <div style="padding-top: 20px">Log stream follows</div>
+            <hr/>
+            <div style="padding: 0px 20px; font-family: monospace !important">
+                {{ log_blob }}
+            </div>
+        {% else %}
+            <div style="padding-top: 20px">Log stream was not available at the time of sending this email.</div>
+        {% endif %}
+
+    </body>
+
+</html>
