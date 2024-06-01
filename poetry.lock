@@ -2199,6 +2199,25 @@ files = [
 windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
+name = "pymodbus"
+version = "3.6.8"
+description = "A fully featured modbus protocol stack in python"
+optional = false
+python-versions = ">=3.8.0"
+files = [
+    {file = "pymodbus-3.6.8-py3-none-any.whl", hash = "sha256:8d55d1eaa8b7216d5da7492f5b610e8154d5d3bf6f4a5b3080319fd2c33b59b9"},
+    {file = "pymodbus-3.6.8.tar.gz", hash = "sha256:abb214716b56fc62bc0d5d9d964e2249439341746287e918d175f0e3ee241407"},
+]
+
+[package.extras]
+all = ["pymodbus[development,documentation,repl,serial,simulator]"]
+development = ["build (>=1.1.1)", "codespell (>=2.2.6)", "coverage (>=7.4.3)", "mypy (>=1.9.0)", "pylint (>=3.1.0)", "pytest (>=8.1.0)", "pytest-asyncio (>=0.23.5.post1)", "pytest-cov (>=4.1.0)", "pytest-profiling (>=1.7.0)", "pytest-timeout (>=2.3.1)", "pytest-xdist (>=3.5.0)", "ruff (>=0.3.3)", "twine (>=5.0.0)", "types-Pygments", "types-pyserial"]
+documentation = ["Sphinx (>=5.3.0)", "recommonmark (>=0.7.1)", "sphinx-rtd-theme (>=1.1.1)"]
+repl = ["pymodbus-repl (>=2.0.3)"]
+serial = ["pyserial (>=3.5)"]
+simulator = ["aiohttp (>=3.8.6)", "aiohttp (>=3.9.0b0)"]
+
+[[package]]
 name = "pyparsing"
 version = "3.1.2"
 description = "pyparsing module - Classes and methods to define and execute parsing grammars"
@@ -2661,6 +2680,21 @@ unclick = ">=0.1.0b5,<0.2.0"
 
 [package.extras]
 websocket = ["websockets (>=11.0.3,<12.0.0)"]
+
+[[package]]
+name = "sdss-drift"
+version = "1.2.0"
+description = "Modbus PLC control library"
+optional = false
+python-versions = "<4.0,>=3.8"
+files = [
+    {file = "sdss_drift-1.2.0-py3-none-any.whl", hash = "sha256:9bc829d4ffc657a99f938a42cf1e67416099eb74cf35f288e54bbc37d0fb6967"},
+    {file = "sdss_drift-1.2.0.tar.gz", hash = "sha256:b6b6ae0021512be2ee477066168871e080d7b947c18f9849debc20f16bf921ff"},
+]
+
+[package.dependencies]
+pymodbus = ">=3.0.0,<4.0.0"
+sdsstools = ">=1.0.0,<2.0.0"
 
 [[package]]
 name = "sdsstools"
@@ -3449,4 +3483,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12,<3.13"
-content-hash = "c9bb08480bbc0a110a76c96cb3b20c845b1ec989adef5f195c3dabddc2eafe96"
+content-hash = "cee9caf2b33b5beacedbd6cd6b4b1e00907e1b3ea5ab3e127c906aed549c9846"

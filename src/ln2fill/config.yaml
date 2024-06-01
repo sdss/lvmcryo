@@ -94,4 +94,11 @@ thermistors:
     channel14: b2
     channel15: z2
 
+ion:
+  z2:
+    host: 10.8.38.155
+    port: 502
+    signal_address: 0
+    onoff_address: 2020
+
 notifications: false
