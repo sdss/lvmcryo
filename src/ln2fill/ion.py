@@ -31,7 +31,10 @@ def convert_pressure(volts: float):
 async def read_ion_pump(camera: str):
     """Reads the signal and on/off status from an ion pump."""
 
-    config_ion = config["ion"][camera]
+    try:
+        config_ion = config["ion"][camera]
+    except KeyError:
+        raise ValueError(f"Camera {camera!r} not found in the configuration.")
 
     drift = Drift(config_ion["host"], config_ion["port"])
 
@@ -48,3 +51,38 @@ async def read_ion_pump(camera: str):
     onoff_status = bool(onoff.registers[0])
 
     return {"pressure": pressure, "is_on": onoff_status}
+
+
+async def toggle_pump(camera: str, on: bool | None = None):
+    """Turns the ion pump on or off.
+
+    Parameters
+    ----------
+    camera
+        The camera for which to toggle the ion pump.
+    on
+        If `True`, turns the pump on. If `False`, turns the pump off. If `None`,
+        toggles the pump current status.
+
+    """
+
+    try:
+        config_ion = config["ion"][camera]
+    except KeyError:
+        raise ValueError(f"Camera {camera!r} not found in the configuration.")
+
+    drift = Drift(config_ion["host"], config_ion["port"])
+
+    async with drift:
+        onoff_address = config_ion["onoff_address"]
+
+        if on is None:
+            current_raw = await drift.client.read_input_registers(onoff_address, 1)
+            current = bool(current_raw.registers[0])
+            new = not current
+        else:
+            new = on
+
+        value = 2**16 - 1 if new else 0
+
+        await drift.client.write_register(onoff_address, value)

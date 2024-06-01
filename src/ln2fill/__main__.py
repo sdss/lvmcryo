@@ -22,10 +22,6 @@ from sdsstools import Configuration, read_yaml_file
 from sdsstools.daemonizer import cli_coro
 
 from ln2fill import config, log
-from ln2fill.handlers.ln2 import LN2Handler
-from ln2fill.notifier import Notifier
-from ln2fill.runner import collect_mesurement_data, notify_failure
-from ln2fill.tools import JSONWriter
 
 
 VALID_ACTIONS = ["purge-and-fill", "purge", "fill", "abort", "clear"]
@@ -397,8 +393,10 @@ async def ln2fill_cli(
 ):
     """CLI for the LN2 purge and fill utilities."""
 
-    from ln2fill.runner import ln2_runner
-    from ln2fill.tools import close_all_valves
+    from ln2fill.handlers.ln2 import LN2Handler
+    from ln2fill.notifier import Notifier
+    from ln2fill.runner import collect_mesurement_data, ln2_runner, notify_failure
+    from ln2fill.tools import JSONWriter, close_all_valves
 
     error: Exception | None = None
 
@@ -464,6 +462,46 @@ async def ln2fill_cli(
 
     if error is not None:
         raise error
+
+
+@click.command(name="lvm-ion")
+@click.argument("CAMERAS", type=str, nargs=-1, required=True)
+@click.option(
+    "--on/--off",
+    default=None,
+    is_flag=True,
+    help="Turns the ion pump on or off.",
+)
+@cli_coro()
+async def lvm_ion_cli(cameras: list[str], on: bool | None = None):
+    """Controls the ion pumps.
+
+    Without ``--on`` or ``--off``, returns the current status of the ion pump.
+    A list of space-separated cameras can be provided. A special camera ``ALL``
+    can be used to control all cameras.
+
+    """
+
+    from ln2fill.ion import read_ion_pump, toggle_pump
+
+    cameras = list(map(lambda x: x.lower(), cameras))
+    if "all" in cameras:
+        cameras = list(config["ion"].keys())
+
+    for camera in cameras:
+        try:
+            if on is None:
+                status = await read_ion_pump(camera)
+                log.info(
+                    f"{camera} - "
+                    f"Pressure: {status['pressure']:.3g} Torr - "
+                    f"On: {status['is_on']}"
+                )
+            else:
+                await toggle_pump(camera, on=on)
+
+        except Exception as err:
+            log.warning(f"Error handling ion pump for camera {camera}: {err}")
 
 
 def main():
