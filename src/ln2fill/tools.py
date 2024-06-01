@@ -238,24 +238,21 @@ async def get_spectrograph_status(spectrographs: list[str] = ["sp1", "sp2", "sp3
 async def read_thermistors_influxdb(
     thermistor: str,
     interval: None,
-) -> bool:
-    ...
+) -> bool: ...
 
 
 @overload
 async def read_thermistors_influxdb(
     thermistor: None,
     interval: None,
-) -> dict[str, bool]:
-    ...
+) -> dict[str, bool]: ...
 
 
 @overload
 async def read_thermistors_influxdb(
     thermistor: str | None,
     interval: float,
-) -> pandas.DataFrame:
-    ...
+) -> pandas.DataFrame: ...
 
 
 async def read_thermistors_influxdb(
