@@ -96,7 +96,7 @@ thermistors:
 
 ion:
   z2:
-    host: 10.8.38.155
+    host: 10.8.38.156
     port: 502
     signal_address: 0
     onoff_address: 2020
