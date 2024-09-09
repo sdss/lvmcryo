@@ -9,7 +9,9 @@ on:
       - 'docs/**'
 
 jobs:
-  build:
+  test:
+    name: Test
+
     runs-on: ubuntu-latest
 
     strategy:
@@ -26,25 +28,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
       - name: Install dependencies
         run: |
-          pip install --upgrade wheel pip setuptools
-          pip install .
-
-      - name: Lint with ruff
-        run: |
-          pip install ruff
-          ruff check src/ tests/
-
-      - name: Lint with black
-        run: |
-          pip install black
-          black --check src/
+          uv sync --no-dev
 
       - name: Test with pytest
         run: |
-          pip install pytest pytest-mock pytest-asyncio pytest-cov
-          pytest
+          uv pip install pytest pytest-mock pytest-asyncio pytest-cov
+          uv run pytest
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

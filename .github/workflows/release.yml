@@ -6,8 +6,9 @@ on:
 name: Create Release
 
 jobs:
-  build:
-    name: Build wheels
+  release:
+    name: Release and build distributions
+
     runs-on: ubuntu-latest
 
     strategy:
