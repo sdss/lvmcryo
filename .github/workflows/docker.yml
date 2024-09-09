@@ -51,6 +51,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
+          provenance: false
           tags: ghcr.io/${{ steps.set-tags.outputs.TAGS }}
 
       - name: Image digest
