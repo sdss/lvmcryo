@@ -1,8 +1,8 @@
 # Use a Python image with uv pre-installed
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-MAINTAINER Jose Sanchez-Gallego, gallegoj@uw.edu
-LABEL org.opencontainers.image.source https://github.com/sdss/lvmcryo
+LABEL org.opencontainers.image.authors="Jose Sanchez-Gallego <gallegoj@uw.edu>"
+LABEL org.opencontainers.image.source=https://github.com/sdss/lvmcryo
 
 # Install the project into `/app`
 WORKDIR /app
