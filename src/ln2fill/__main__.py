@@ -9,19 +9,15 @@
 from __future__ import annotations
 
 import asyncio
-import datetime
-import logging
 import pathlib
 import warnings
-from tempfile import NamedTemporaryFile
 
 import click
+from click_help_colors import HelpColorsGroup
+from click_option_group import optgroup
 from pydantic import BaseModel
 
-from sdsstools import Configuration, read_yaml_file
 from sdsstools.daemonizer import cli_coro
-
-from ln2fill import config, log
 
 
 VALID_ACTIONS = ["purge-and-fill", "purge", "fill", "abort", "clear"]
@@ -71,11 +67,16 @@ def process_cli_options(
 ):
     """Updates the input options using defaults."""
 
+    import datetime
+
+    from sdsstools import Configuration, read_yaml_file
+
+    from ln2fill import config
     from ln2fill.tools import is_container
 
     if use_defaults is True and configuration_file is not None:
         raise click.UsageError(
-            "--use-internal and --configuration-file are mutually exclusive.",
+            "--use-defaults and --configuration-file are mutually exclusive.",
         )
 
     # Read internal configuration. We'll use this as a last resource in some cases,
@@ -139,7 +140,7 @@ def process_cli_options(
         else:
             raise ValueError(f"Invalid value {value} for parameter {option!r}.")
 
-    timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     # Define log path.
     if options.write_log or options.log_path:
@@ -208,32 +209,36 @@ def process_cli_options(
     return options
 
 
-@click.command(name="ln2fill")
+@click.group(
+    cls=HelpColorsGroup,
+    help_headers_color="yellow",
+    help_options_color="green",
+)
+def cli():
+    """LVM cryostat-related tools."""
+
+
+@cli.command(name="fill")
 @click.argument(
     "ACTION",
     type=click.Choice(VALID_ACTIONS, case_sensitive=False),
     default="purge-and-fill",
 )
-@click.option(
+@optgroup.group("Configuration options")
+@optgroup.option(
     "--use-defaults",
     "-D",
     is_flag=True,
     help="Uses the internal configuration file to set the default values. "
     "Options explicitely defined will still override the defaults.",
 )
-@click.option(
+@optgroup.option(
     "--configuration-file",
     type=click.Path(exists=True, dir_okay=False),
     help="The configuration file to use to set the default values and other options. "
     "Incompatible with --use-defaults.",
 )
-@click.option(
-    "--cameras",
-    "-c",
-    type=str,
-    help="Comma-separated cameras to fill. Defaults to all cameras.",
-)
-@click.option(
+@optgroup.option(
     "--interactive",
     "-i",
     type=click.Choice(["auto", "yes", "no"], case_sensitive=False),
@@ -241,158 +246,180 @@ def process_cli_options(
     help="Controls whether the interactive features are shown. When --interactive auto "
     "(the default), interactivity is determined based on console mode.",
 )
-@click.option(
+@optgroup.option(
+    "--notify/--no-notify",
+    is_flag=True,
+    default=True,
+    help="Whether to send notifications of success/failure to Slack and over email.",
+)
+@optgroup.option(
     "--no-prompt",
     is_flag=True,
     help="Does not prompt the user to finish or abort a purge/fill. Prompting is "
     "required if --fill-time or --purge-time are not provided and thermistors "
     "are not used.",
 )
-@click.option(
+@optgroup.option(
+    "--dry-run",
+    is_flag=True,
+    help="Test run the code but do not actually open/close any valves.",
+)
+@optgroup.group(
+    "Purge and fill options",
+    help="Configuration for the purge and fill process.",
+)
+@optgroup.option(
+    "--cameras",
+    "-c",
+    type=str,
+    help="Comma-separated cameras to fill. Defaults to all cameras.",
+)
+@optgroup.option(
     "--check-pressure/--no-check-pressure",
     default=True,
     show_default=True,
     help="Aborts purge/fill if the pressure of any cryostat is above the limit.",
 )
-@click.option(
+@optgroup.option(
     "--check-temperature/--no-check-temperature",
     default=True,
     show_default=True,
     help="Aborts purge/fill if the temperature of a fill cryostat is above the limit.",
 )
-@click.option(
+@optgroup.option(
     "--max-pressure",
     type=float,
     help="Maximum cryostat pressure if --check-pressure. Defaults to internal value.",
 )
-@click.option(
+@optgroup.option(
     "--max-temperature",
     type=float,
     help="Maximum cryostat temperature if --check-temperature. "
     "Defaults to internal value.",
 )
-@click.option(
+@optgroup.option(
     "--purge-time",
     type=float,
     help="Purge time in seconds. If --use-thermistors, this is effectively the "
     "maximum purge time.",
 )
-@click.option(
+@optgroup.option(
     "--min-purge-time",
     type=float,
     help="Minimum purge time in seconds. Defaults to internal value.",
 )
-@click.option(
+@optgroup.option(
     "--max-purge-time",
     type=float,
     help="Maximum purge time in seconds. Defaults to internal value.",
 )
-@click.option(
+@optgroup.option(
     "--fill-time",
     type=float,
     help="Fill time in seconds. If --use-thermistors, this is effectively the "
     "maximum fill time.",
 )
-@click.option(
+@optgroup.option(
     "--min-fill-time",
     type=float,
     help="Minimum fill time in seconds. Defaults to internal value.",
 )
-@click.option(
+@optgroup.option(
     "--max-fill-time",
     type=float,
     help="Maximum fill time in seconds. Defaults to internal value.",
 )
-@click.option(
+@optgroup.option(
     "--use-thermistors/--no-use-thermistors",
     default=True,
     show_default=True,
     help="Use thermistor values to determine purge/fill time.",
 )
-@click.option(
+@optgroup.group("Logging options")
+@optgroup.option(
     "--quiet",
     "-q",
     is_flag=True,
     help="Disable logging to stdout.",
 )
-@click.option(
+@optgroup.option(
     "--verbose",
     "-v",
     is_flag=True,
     help="Outputs additional information to stdout.",
 )
-@click.option(
+@optgroup.option(
     "--write-log",
     "-S",
     is_flag=True,
     help="Saves the log to a file.",
 )
-@click.option(
+@optgroup.option(
     "--log-path",
     type=str,
     help="Path where to save the log file. Implies --write-log. "
     "Defaults to the current directory.",
 )
-@click.option(
+@optgroup.option(
     "--write-json",
     is_flag=True,
     help="Writes a JSON file with the run configuration and status. "
     "Defaults to a path relative to --log-path if defined, or the current directory.",
 )
-@click.option(
+@optgroup.option(
+    "--json-path",
+    type=str,
+    help="Path where to save the JSON data file. Implies --write-json. "
+    "Defaults to a path relative to --write-log-path, if provided, or to the "
+    "current directory.",
+)
+@optgroup.option(
     "--write-measurements",
     is_flag=True,
     help="Saves cryostat pressures and temperatures taken during purge/fill "
     "to a parquet file.",
 )
-@click.option(
+@optgroup.option(
     "--measurements-path",
     type=str,
     help="Path where to save the measurements. Implies --write-measurements. "
     "Defaults to a path relative to --write-log-path, if provided, or to the "
     "current directory.",
 )
-@click.option(
+@optgroup.option(
     "--measurements-extra-time",
     type=float,
     default=0,
     help="Additional time to take cryostat measurements after the "
     "action has been completed.",
 )
-@click.option(
+@optgroup.option(
     "--generate-qa",
     is_flag=True,
     help="Generates QA plots.",
 )
-@click.option(
+@optgroup.option(
     "--qa-path",
     type=str,
     help="Path where to save the QA files. Implies --generate-qa. "
     "Defaults to a path relative to --save-log-path, if provided, or to the "
     "current directory.",
 )
-@click.option(
-    "--notify/--no-notify",
-    is_flag=True,
-    default=True,
-    help="Whether to send notifications of success/failure to Slack and over email.",
-)
-@click.option(
-    "--dry-run",
-    is_flag=True,
-    help="Test run the code but do not actually open/close any valves.",
-)
 @click.pass_context
 @cli_coro()
-async def ln2fill_cli(
+async def fill_cli(
     ctx,
     action: str,
     use_defaults: bool = False,
     configuration_file: str | None = None,
     **kwargs,
 ):
-    """CLI for the LN2 purge and fill utilities."""
+    """Run the LN2 purge/fill routines."""
 
+    import logging
+    from tempfile import NamedTemporaryFile
+
+    from ln2fill import log
     from ln2fill.handlers.ln2 import LN2Handler
     from ln2fill.notifier import Notifier
     from ln2fill.runner import collect_mesurement_data, ln2_runner, notify_failure
@@ -424,7 +451,7 @@ async def ln2fill_cli(
         log_path = pathlib.Path(options.log_path)
     else:
         # Write log to a temporary path so we can recover it for notifications.
-        log_path = pathlib.Path(NamedTemporaryFile(suffix=".fits", delete=True).name)
+        log_path = pathlib.Path(NamedTemporaryFile(suffix=".log", delete=True).name)
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log.start_file_logger(str(log_path), mode="w", rotating=False)
@@ -464,7 +491,7 @@ async def ln2fill_cli(
         raise error
 
 
-@click.command(name="lvm-ion")
+@cli.command(name="ion")
 @click.argument("CAMERAS", type=str, nargs=-1, required=True)
 @click.option(
     "--on/--off",
@@ -482,6 +509,7 @@ async def lvm_ion_cli(cameras: list[str], on: bool | None = None):
 
     """
 
+    from ln2fill import config, log
     from ln2fill.ion import read_ion_pump, toggle_pump
 
     cameras = list(map(lambda x: x.lower(), cameras))
@@ -505,7 +533,7 @@ async def lvm_ion_cli(cameras: list[str], on: bool | None = None):
 
 
 def main():
-    ln2fill_cli()
+    cli(max_content_width=100)
 
 
 if __name__ == "__main__":
