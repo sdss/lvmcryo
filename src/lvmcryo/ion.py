@@ -11,7 +11,7 @@ from __future__ import annotations
 from drift import Drift
 from drift.convert import data_to_float32
 
-from ln2fill import config
+from lvmcryo import config
 
 
 def convert_pressure(volts: float):

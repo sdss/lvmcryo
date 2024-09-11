@@ -14,7 +14,7 @@ from email.message import EmailMessage
 
 import httpx
 
-from ln2fill import config, log
+from lvmcryo import config, log
 
 
 @dataclass

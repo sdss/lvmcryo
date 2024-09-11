@@ -14,8 +14,8 @@ from time import time
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
-from ln2fill.handlers.valve import ValveHandler
-from ln2fill.tools import read_thermistors
+from lvmcryo.handlers.valve import ValveHandler
+from lvmcryo.tools import read_thermistors
 
 
 @dataclass

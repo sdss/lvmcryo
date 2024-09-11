@@ -1,7 +1,7 @@
 [project]
-name = "lvm-ln2fill"
+name = "lvmcryo"
 version = "0.1.0a0"
-description = "LVM LN2 purge and fill utilities"
+description = "LVM cryostat tools"
 authors = [
     { name = "José Sánchez-Gallego", email = "gallegoj@uw.edu" }
 ]
@@ -26,13 +26,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sdss/lvm-ln2fill"
-Repository = "https://github.com/sdss/lvm-ln2fill"
-Documentation = "https://lvm-ln2fill.readthedocs.org"
+Homepage = "https://github.com/sdss/lvmcryo"
+Repository = "https://github.com/sdss/lvmcryo"
+Documentation = "https://lvmcryo.readthedocs.org"
 
 [project.scripts]
-ln2fill = "ln2fill.__main__:main"
-lvm-ion = "ln2fill.__main__:lvm_ion_cli"
+lvmcryo = "lvmcryo.__main__:main"
 
 [tool.uv]
 package = true
@@ -73,7 +72,7 @@ unfixable = ["F841"]
 "__init__.py" = ["F403", "E402", "F401"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ln2fill"]
+known-first-party = ["lvmcryo"]
 lines-after-imports = 2
 section-order = ["future", "standard-library", "typing", "third-party", "sdss", "first-party", "local-folder"]
 
@@ -82,16 +81,16 @@ typing = ["typing"]
 sdss = ["sdsstools", "clu"]
 
 [tool.pytest.ini_options]
-addopts = "--cov ln2fill --cov-report xml --cov-report html --cov-report term -W ignore"
+addopts = "--cov lvmcryo --cov-report xml --cov-report html --cov-report term -W ignore"
 asyncio_mode = "auto"
 
 [tool.coverage.run]
 branch = true
-include = ["src/ln2fill/*"]
+include = ["src/lvmcryo/*"]
 omit = [
     "*/__init__.py",
-    "src/ln2fill/__main__.py",
-    "src/ln2fill/types.py",
+    "src/lvmcryo/__main__.py",
+    "src/lvmcryo/types.py",
 ]
 
 [tool.coverage.report]
@@ -101,12 +100,5 @@ exclude_lines = [
 ]
 
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["ln2fill*"]
-
-[tool.setuptools.package-data]
-ln2fill = ["*.yaml", "templates/*"]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

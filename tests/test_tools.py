@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from pytest_mock import MockFixture
 
-from ln2fill.tools import close_all_valves, valve_on_off
+from lvmcryo.tools import close_all_valves, valve_on_off
 
 
 async def test_valve_on_off(mock_client_send_command):
@@ -31,7 +31,7 @@ async def test_valve_on_off_bad_valve():
 
 
 async def test_close_all_valves(mocker: MockFixture):
-    mm = mocker.patch("ln2fill.tools.valve_on_off")
+    mm = mocker.patch("lvmcryo.tools.valve_on_off")
 
     await close_all_valves()
     mm.assert_called()

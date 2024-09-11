@@ -17,8 +17,8 @@ from pydantic import model_validator
 from pydantic.dataclasses import dataclass
 from rich.progress import TaskID
 
-from ln2fill import config, log
-from ln2fill.tools import (
+from lvmcryo import config, log
+from lvmcryo.tools import (
     TimerProgressBar,
     cancel_nps_threads,
     cancel_task,
@@ -70,7 +70,7 @@ class ValveHandler:
         return self
 
     def __post_init__(self):
-        from ln2fill.handlers.thermistor import ThermistorHandler
+        from lvmcryo.handlers.thermistor import ThermistorHandler
 
         self.thermistor = ThermistorHandler(self)
 

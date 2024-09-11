@@ -14,12 +14,12 @@ defaults:
   quiet: false
   write_json: true
   write_log: true
-  log_path: '/data/logs/ln2fills/{timestamp}'
+  log_path: '/data/logs/lvmcryos/{timestamp}'
   write_measurements: true
-  measurements_path: '/data/logs/ln2fills/{timestamp}'
+  measurements_path: '/data/logs/lvmcryos/{timestamp}'
   measurements_extra_time: 0
   generate_qa: true
-  qa_path: '/data/logs/ln2fills/{timestamp}'
+  qa_path: '/data/logs/lvmcryos/{timestamp}'
   slack: true
   slack_route: http://lvm-hub.lco.cl/restapi/slack/alert/
   email: false

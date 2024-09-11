@@ -12,7 +12,7 @@ import pytest
 
 from clu.command import Command, CommandStatus
 
-import ln2fill.tools
+import lvmcryo.tools
 
 
 @pytest.fixture()
@@ -34,7 +34,7 @@ def command_failed():
 @pytest.fixture()
 async def mock_client_start(mocker):
     yield mocker.patch.object(
-        ln2fill.tools.AMQPClient,
+        lvmcryo.tools.AMQPClient,
         "start",
     )
 
@@ -42,7 +42,7 @@ async def mock_client_start(mocker):
 @pytest.fixture()
 async def mock_client_send_command(mock_client_start, mocker, command_done):
     yield mocker.patch.object(
-        ln2fill.tools.AMQPClient,
+        lvmcryo.tools.AMQPClient,
         "send_command",
         return_value=command_done,
     )

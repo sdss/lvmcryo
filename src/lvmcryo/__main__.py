@@ -22,7 +22,7 @@ from sdsstools.daemonizer import cli_coro
 
 VALID_ACTIONS = ["purge-and-fill", "purge", "fill", "abort", "clear"]
 
-LOCKFILE = pathlib.Path("/data/ln2fill.lock")
+LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
 
 
 class OptionsModel(BaseModel):
@@ -71,8 +71,8 @@ def process_cli_options(
 
     from sdsstools import Configuration, read_yaml_file
 
-    from ln2fill import config
-    from ln2fill.tools import is_container
+    from lvmcryo import config
+    from lvmcryo.tools import is_container
 
     if use_defaults is True and configuration_file is not None:
         raise click.UsageError(
@@ -148,9 +148,9 @@ def process_cli_options(
         if options.log_path:
             options.log_path = options.log_path.format(timestamp=timestamp)
             if not options.log_path.endswith(".log"):
-                options.log_path += "/ln2fill.log"
+                options.log_path += "/lvmcryo.log"
         else:
-            options.log_path = "./ln2fill.log"
+            options.log_path = "./lvmcryo.log"
 
     log_path = pathlib.Path(options.log_path) if options.log_path else None
 
@@ -159,9 +159,9 @@ def process_cli_options(
         options.write_measurements = True
         if options.measurements_path is None:
             if log_path:
-                options.measurements_path = str(log_path.parent / "ln2fill.parquet")
+                options.measurements_path = str(log_path.parent / "lvmcryo.parquet")
             else:
-                options.measurements_path = "./ln2fill.parquet"
+                options.measurements_path = "./lvmcryo.parquet"
 
     # Define the QA path
     if options.generate_qa or options.qa_path:
@@ -177,9 +177,9 @@ def process_cli_options(
         options.write_json = True
         if options.json_path is None:
             if log_path is not None:
-                options.json_path = str(log_path.parent / "ln2fill.json")
+                options.json_path = str(log_path.parent / "lvmcryo.json")
             else:
-                options.json_path = "./ln2fill.json"
+                options.json_path = "./lvmcryo.json"
 
     # Determine if we should run interactively.
     if options.interactive == "auto":
@@ -419,11 +419,11 @@ async def fill_cli(
     import logging
     from tempfile import NamedTemporaryFile
 
-    from ln2fill import log
-    from ln2fill.handlers.ln2 import LN2Handler
-    from ln2fill.notifier import Notifier
-    from ln2fill.runner import collect_mesurement_data, ln2_runner, notify_failure
-    from ln2fill.tools import JSONWriter, close_all_valves
+    from lvmcryo import log
+    from lvmcryo.handlers.ln2 import LN2Handler
+    from lvmcryo.notifier import Notifier
+    from lvmcryo.runner import collect_mesurement_data, ln2_runner, notify_failure
+    from lvmcryo.tools import JSONWriter, close_all_valves
 
     error: Exception | None = None
 
@@ -509,8 +509,8 @@ async def lvm_ion_cli(cameras: list[str], on: bool | None = None):
 
     """
 
-    from ln2fill import config, log
-    from ln2fill.ion import read_ion_pump, toggle_pump
+    from lvmcryo import config, log
+    from lvmcryo.ion import read_ion_pump, toggle_pump
 
     cameras = list(map(lambda x: x.lower(), cameras))
     if "all" in cameras:

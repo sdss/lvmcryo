@@ -2,7 +2,7 @@ import os
 
 from pkg_resources import parse_version
 
-from ln2fill import __version__
+from lvmcryo import __version__
 
 
 # Are we building in RTD?
@@ -46,7 +46,7 @@ source_parsers = {
 master_doc = "index"
 
 # General information about the project.
-project = "lvm-ln2fill"
+project = "lvmcryo"
 copyright = "{0}, {1}".format("2023-", "José Sánchez-Gallego")
 author = "José Sánchez-Gallego"
 
@@ -123,7 +123,7 @@ copybutton_prompt_text = r">>> |\$ "
 copybutton_prompt_is_regexp = True
 
 rst_epilog = f"""
-.. |ln2fill_version| replace:: {__version__}
+.. |lvmcryo_version| replace:: {__version__}
 .. default-role:: py:obj
 """
 
@@ -133,11 +133,11 @@ rst_epilog = f"""
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 html_theme = "furo"
-html_title = "ln2fill's documentation"
+html_title = "lvmcryo's documentation"
 html_logo = "_static/lvm_logo.png"
 html_favicon = "./_static/favicon.ico"
 html_theme_options = {
-    "source_repository": "https://github.com/sdss/lvm-ln2fill/",
+    "source_repository": "https://github.com/sdss/lvmcryo/",
     "source_branch": "main",
     "source_directory": "docs/sphinx",
 }

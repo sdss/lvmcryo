@@ -1,4 +1,4 @@
-(ln2fill-changelog)=
+(lvmcryo-changelog)=
 
 ```{include} ../../CHANGELOG.md
 ```

@@ -17,7 +17,7 @@ jobs:
 
     env:
       USER: sdss
-      APP: lvm-ln2fill
+      APP: lvmcryo
 
     steps:
       - name: Set docker tags
