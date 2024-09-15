@@ -9,97 +9,33 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import pathlib
-import re
 import time
-import warnings
 from contextlib import suppress
 from functools import partial
 
-from typing import Any, overload
+from typing import TYPE_CHECKING, Any
 
-import asyncudp
-import httpx
-import pandas
 from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
 
-from clu import AMQPClient
+from lvmopstools.clu import CluClient
 
-from . import config
-
-
-class CluClient:
-    """AMQP client asynchronous generator.
-
-    Returns an object with an ``AMQPClient`` instance. The normal way to
-    use it is to do ::
-
-        async with CluClient() as client:
-            await client.send_command(...)
-
-    Alternatively one can do ::
-
-        client = await anext(CluClient())
-        await client.send_command(...)
-
-    The asynchronous generator differs from the one in ``AMQPClient`` in that
-    it does not close the connection on exit.
-
-    This class is a singleton, which effectively means the AMQP client is reused
-    during the life of the worker. The singleton can be cleared by calling
-    `.clear`.
-
-    """
-
-    __initialised: bool = False
-    __instance: CluClient | None = None
-
-    def __new__(cls):
-        if cls.__instance is None:
-            cls.__instance = super(CluClient, cls).__new__(cls)
-            cls.__instance.__initialised = False
-
-        return cls.__instance
-
-    def __init__(self):
-        if self.__initialised is True:
-            return
-
-        host: str = os.environ.get("RABBITMQ_HOST", config["rabbitmq.host"])
-        port: int = int(os.environ.get("RABBITMQ_PORT", config["rabbitmq.port"]))
-
-        self.client = AMQPClient(host=host, port=port)
-        self.__initialised = True
-
-    async def __aenter__(self):
-        if not self.client.is_connected():
-            await self.client.start()
-
-        return self.client
-
-    async def __aexit__(self, exc_type, exc, tb):
-        pass
-
-    async def __anext__(self):
-        if not self.client.is_connected():
-            await self.client.start()
-
-        return self.client
-
-    @classmethod
-    def clear(cls):
-        """Clears the current instance."""
-
-        cls.__instance = None
-        cls.__initialised = False
+from lvmcryo.config import get_internal_config
 
 
-async def valve_info(valve: str) -> dict[str, Any]:
+if TYPE_CHECKING:
+    from sdsstools.configuration import Configuration
+
+
+async def valve_info(valve: str, config: Configuration | None = None) -> dict[str, Any]:
     """Retrieves valve information from the NPS."""
+
+    config = config or get_internal_config()
 
     actor = config[f"valves.{valve}.actor"]
     outlet = config[f"valves.{valve}.outlet"]
@@ -117,6 +53,7 @@ async def valve_on_off(
     on: bool,
     timeout: float | None = None,
     use_script: bool = True,
+    config: Configuration | None = None,
 ) -> int | None:
     """Turns a valve on/off.
 
@@ -134,6 +71,8 @@ async def valve_on_off(
         (must be defined in the NPS) to set a timeout after which the valve
         will be turned off. With ``use_script=False``, a ``timeout`` will
         block until the timeout is reached.
+    config
+        The configuration object with information about the valves.
 
     Returns
     -------
@@ -142,6 +81,8 @@ async def valve_on_off(
         was started. Otherwise `None`.
 
     """
+
+    config = config or get_internal_config()
 
     if valve not in config["valves"]:
         raise ValueError(f"Unknown valve {valve!r}.")
@@ -196,124 +137,13 @@ async def cancel_nps_threads(actor: str, thread_id: int | None = None):
         await client.send_command(actor, command_string)
 
 
-async def close_all_valves():
+async def close_all_valves(config: Configuration | None = None):
     """Closes all the outlets."""
+
+    config = config or get_internal_config()
 
     valves = list(config["valves"])
     await asyncio.gather(*[valve_on_off(valve, False) for valve in valves])
-
-
-async def get_spectrograph_status(spectrographs: list[str] = ["sp1", "sp2", "sp3"]):
-    """Returns pressures and CCD and LN2 temperatures for all cryostats."""
-
-    api_url: str = config["api.url"]
-
-    api_response: dict[str, float] = {}
-    async with httpx.AsyncClient(base_url=api_url) as client:
-        response_specs = await asyncio.gather(
-            *[client.get(f"/spectrographs/{spec}/summary") for spec in spectrographs]
-        )
-
-        for rs in response_specs:
-            if rs.status_code != 200:
-                raise ValueError("Invalid response from API.")
-            api_response.update(rs.json())
-
-    response: dict[str, dict[str, float]] = {}
-    for spec in spectrographs:
-        for camera in ["r", "b", "z"]:
-            cryostat = f"{camera}{spec[-1]}"
-            response[cryostat] = {}
-            for label in ["ccd", "ln2", "pressure"]:
-                cryostat_label = f"{cryostat}_{label}"
-                if cryostat_label in api_response:
-                    response[cryostat][label] = api_response[cryostat_label]
-                else:
-                    warnings.warn(f"Cannot find label {cryostat_label!r}.")
-
-    return response
-
-
-@overload
-async def read_thermistors_influxdb(
-    thermistor: str,
-    interval: None,
-) -> bool: ...
-
-
-@overload
-async def read_thermistors_influxdb(
-    thermistor: None,
-    interval: None,
-) -> dict[str, bool]: ...
-
-
-@overload
-async def read_thermistors_influxdb(
-    thermistor: str | None,
-    interval: float,
-) -> pandas.DataFrame: ...
-
-
-async def read_thermistors_influxdb(
-    thermistor: str | None = None,
-    interval: float | None = None,
-) -> bool | dict[str, bool] | pandas.DataFrame:
-    """Reads the thermistors by querying InfluxDB over the API."""
-
-    api_url: str = config["api.url"]
-
-    if thermistor is not None:
-        route = f"/spectrographs/thermistors/{thermistor}"
-    else:
-        route = "/spectrographs/thermistors"
-
-    if interval is not None:
-        route += f"?interval={interval}"
-
-    async with httpx.AsyncClient(base_url=api_url) as client:
-        response = await client.get(route)
-
-        if response.status_code != 200:
-            raise httpx.HTTPError(f"Invalid response from API: {response.status_code}")
-
-    if interval is not None:
-        df = pandas.DataFrame(**response.json())
-        df["time"] = pandas.to_datetime(df["time"])
-        return df
-
-    return response.json()
-
-
-async def read_thermistors() -> dict[str, bool]:
-    """Reads the thermistors directly by connecting to the device.."""
-
-    host = config["thermistors.host"]
-    port = config["thermistors.port"]
-    mapping = config["thermistors.mapping"]
-
-    socket = await asyncio.wait_for(
-        asyncudp.create_socket(remote_addr=(host, port)),
-        timeout=5,
-    )
-
-    socket.sendto(b"$016\r\n")
-    data, _ = await asyncio.wait_for(socket.recvfrom(), timeout=5)
-
-    match = re.match(rb"!01([0-9A-F]+)\r", data)
-    if match is None:
-        raise ValueError(f"Invalid response from thermistor server at {host!r}.")
-
-    value = int(match.group(1), 16)
-
-    channels: dict[str, bool] = {}
-    for channel in range(16):
-        channel_name = mapping.get(f"channel{channel}", "")
-        if channel_name == "":
-            continue
-        channels[channel_name] = bool((value & 1 << channel) > 0)
-
-    return channels
 
 
 def is_container():
@@ -517,3 +347,30 @@ def JSONWriter(filename: str | os.PathLike | None, key: str, data: Any):
     json.dump(json_, open(filename, "w"), indent=4)
 
     return json_
+
+
+class LockExistsError(RuntimeError):
+    """Raised when a lock file already exists."""
+
+    pass
+
+
+@contextlib.contextmanager
+def ensure_lock(lockfile: str | os.PathLike | pathlib.Path):
+    """Ensures a lock file is created and deleted on exit.
+
+    Raises an exception if the lock file already exists.
+
+    """
+
+    lockfile = pathlib.Path(lockfile)
+
+    if lockfile.exists():
+        raise LockExistsError(f"Lock file {lockfile} already exists.")
+
+    lockfile.touch()
+
+    try:
+        yield
+    finally:
+        lockfile.unlink()

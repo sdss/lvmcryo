@@ -2,28 +2,31 @@
 defaults:
   cameras: ['r1', 'r2', 'r3']
   interactive: auto
+  no_prompt: null
   check_pressure: true
   check_temperature: true
-  max_temperature: '{{limits.temperature.max}}'
-  max_pressure: '{{limits.pressure.max}}'
-  min_purge_time: '{{limits.purge.min}}'
-  max_purge_time: '{{limits.purge.max}}'
-  min_fill_time: '{{limits.fill.min}}'
-  max_fill_time: '{{limits.fill.max}}'
+  max_temperature: -140
+  max_pressure: 0.001
+  min_purge_time: 1500
+  max_purge_time: 2000
+  min_fill_time: 120
+  max_fill_time: 360
   use_thermistors: true
-  quiet: false
-  write_json: true
-  write_log: true
-  log_path: '/data/logs/lvmcryos/{timestamp}'
-  write_measurements: true
-  measurements_path: '/data/logs/lvmcryos/{timestamp}'
-  measurements_extra_time: 0
-  generate_qa: true
-  qa_path: '/data/logs/lvmcryos/{timestamp}'
-  slack: true
-  slack_route: http://lvm-hub.lco.cl/restapi/slack/alert/
-  email: false
-  email_recipients: lvm-critical@sdss.org
+  log_path: '/data/logs/lvmcryo/{timestamp}.log'
+  data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
+
+notifications:
+  slack_route: http://localhost:8888/slack/message
+  slack_channels:
+    info: lvm-notifications
+    error: lvm-alerts
+  slack_mentions:
+    error: '@here'
+  email_recipients:
+    - lvm-critical@sdss.org
+  email_server: smtp-02.lco.cl
+  email_from: 'LVM LN2 system <lvm-ln2@lco.cl>'
+  email_reply_to: 'lvm-inst@sdss.org'
 
 valves:
   r1:
@@ -57,58 +60,3 @@ valves:
     actor: lvmnps.calib
     outlet: outlet8
     thermistor: supply
-
-limits:
-  pressure:
-    min: null
-    max: 0.001
-  temperature:
-    min: null
-    max: -140
-  purge:
-    min: 1500
-    max: 1920
-  fill:
-    min: 120
-    max: 360
-
-api:
-  url: http://lvm-hub.lco.cl:8080/restapi/
-
-rabbitmq:
-  host: lvm-hub.lco.cl
-  port: 5672
-
-thermistors:
-  host: 10.8.38.180
-  port: 1025
-  mapping:
-    channel7: supply
-    channel8: r1
-    channel9: b1
-    channel6: z1
-    channel10: r3
-    channel11: b3
-    channel12: z3
-    channel13: r2
-    channel14: b2
-    channel15: z2
-
-ion:
-  z2:
-    host: 10.8.38.156
-    port: 502
-    signal_address: 0
-    onoff_address: 2020
-  b2:
-    host: 10.8.38.155
-    port: 502
-    signal_address: 2
-    onoff_address: 2021
-  r2:
-    host: 10.8.38.155
-    port: 502
-    signal_address: 4
-    onoff_address: 2022
-
-notifications: false

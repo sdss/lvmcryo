@@ -8,27 +8,65 @@
 
 from __future__ import annotations
 
+import pathlib
 import smtplib
-from dataclasses import dataclass
+import warnings
 from email.message import EmailMessage
 
 import httpx
+from pydantic import BaseModel, ValidationError
 
-from lvmcryo import config, log
+from sdsstools.configuration import Configuration
+
+from lvmcryo.config import NotificationLevel, get_internal_config
 
 
-@dataclass
+class NotifierConfig(BaseModel):
+    """Configuration for the Notifier class."""
+
+    slack_route: str
+    slack_channels: dict[NotificationLevel, str]
+    slack_mentions: dict[NotificationLevel, str | list[str]] = {}
+    slack_from: str = "LN₂ Helper"
+
+    email_recipients: list[str]
+    email_server: str
+    email_from: str
+    email_reply_to: str | None = None
+
+
 class Notifier:
     """Sends notifications over Slack or email."""
 
-    silent: bool = False
+    def __init__(self, config_data: Configuration | dict):
+        if not config_data["notifications"]:
+            raise ValidationError("Configuration does not have notifications section.")
 
-    async def send_to_slack(
+        self.config = NotifierConfig(**config_data["notifications"])
+
+        self.disabled: bool = False
+        self.slack_disabled: bool = False
+        self.email_disabled: bool = False
+
+    def __repr__(self):
+        return self.config.__repr__()
+
+    @classmethod
+    def from_config(cls, config: Configuration | dict | str | pathlib.Path) -> Notifier:
+        """Creates a `.Notifier` instance from a configuration object or file."""
+
+        if isinstance(config, (dict, Configuration)):
+            return cls(config)
+
+        config_data = get_internal_config(config)
+        return cls(config_data)
+
+    async def post_to_slack(
         self,
         text: str | None = None,
-        blocks: list[dict] | None = None,
+        level: NotificationLevel = NotificationLevel.info,
+        mentions: str | list[str] | None = None,
         channel: str | None = None,
-        is_alert: bool = False,
     ):
         """Posts a message to Slack.
 
@@ -36,118 +74,90 @@ class Notifier:
         ----------
         text
             Plain text to send to the Slack channel.
-        blocks
-            A list of blocks to send to the Slack channel. These follow the Slack
-            API format for blocks. Incompatible with ``text``.
+        level
+            The level of the message. Determines the channel where the message
+            is sent.
+        mentions
+            A list of Slack users to mention in the message.
         channel
             The channel in the SSDS-V workspace where to send the message. Defaults
             to the configuration value.
-        is_alert
-            If ``True``, tags people in the message to raise visibility.
 
         """
 
-        if self.silent or not config["notifications"]:
-            log.warning("Notifications are disabled. Not sending Slack message.")
+        if self.disabled or self.slack_disabled:
             return
 
-        base_url = config["api.url"]
-        route = config["notifications.slack.post_message_route"]
-        channel = config["notifications.slack.channel"]
+        route = self.config.slack_route
+        channel = channel or self.config.slack_channels[level]
 
-        if text is None and blocks is None:
-            raise ValueError("Either text or blocks must be defined.")
-        elif text is not None and blocks is not None:
-            raise ValueError("Only one of text or blocks can be defined.")
+        if mentions is None:
+            if level in self.config.slack_mentions:
+                mentions = self.config.slack_mentions[level]
+            else:
+                mentions = []
 
-        if is_alert:
-            alert_users: list[str] = config.get("notifications.alerts.users.slack", [])
+        if isinstance(mentions, str):
+            mentions = [mentions]
 
-            user_ids: list[str] = []
-            for user in alert_users:
-                try:
-                    user_ids.append(await self._get_slack_user_id(user))
-                except RuntimeError:
-                    log.warning(f"Failed getting userID for {user}.")
-
-            user_ids = list(map(lambda s: f"<@{s}>", user_ids))
-
-            if len(alert_users) > 0:
-                if text is not None:
-                    text = " ".join(user_ids) + " " + text
-                elif blocks is not None:
-                    blocks.insert(
-                        0,
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "plain_text",
-                                "text": " ".join(user_ids),
-                            },
-                        },
-                    )
-
-        async with httpx.AsyncClient(base_url=base_url) as client:
-            await client.post(
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
                 route,
                 json={
                     "channel": channel,
                     "text": text,
-                    "blocks": blocks,
+                    "username": self.config.slack_from,
+                    "mentions": mentions,
                 },
             )
 
-    async def _get_slack_user_id(self, display_name: str) -> str:
-        """Gets the userID of a Slack user from its display name."""
+        if response.status_code != 200:
+            warnings.warn(f"Failed sending message to Slack: {response.text}")
+            return False
 
-        base_url = config["api.url"]
-        route = config["notifications.slack.user_id_route"]
-
-        async with httpx.AsyncClient(base_url=base_url) as client:
-            response = await client.get(f"{route}/{display_name}")
-
-        if response.status_code != 200 or response.json() is None:
-            raise RuntimeError("Failed getting userID from Slack.")
-
-        return response.json()
+        return True
 
     def send_email(
         self,
+        message: str,
+        subject: str = "A message from the LVM Cryo system",
         recipients: list[str] | None = None,
-        subject: str | None = None,
-        message: str | None = None,
+        from_address: str | None = None,
+        email_server: str | None = None,
     ):
         """Sends an email to a list of recipients.
 
         Parameters
         ----------
+        message
+            The body of the email. Can be a string in HTML format.
+        subject
+            The subject of the email.
         recipients
             A list of email addresses to send the email to. If ``None``, uses the
             default recipients in the configuration.
-        subject
-            The subject of the email.
-        message
-            The body of the email.
+        from_address
+            The email address to send the email from. If ``None``, uses the default
+            address in the configuration.
+        email_server
+            The SMTP server to use. If ``None``, uses the default server in the
+            configuration.
 
         """
 
-        if self.silent or not config["notifications"]:
-            log.warning("Notifications are disabled. Not sending email message.")
+        if self.disabled or self.email_disabled:
             return
 
-        recipients = recipients or config["notifications.alerts.users.email"]
-        assert recipients is not None
-
-        subject = subject or "Alert during LVM LN2 fill"
-
-        if message is None:
-            log.warning("No email body defined. Sending empty email.")
-            message = ""
+        recipients = recipients or self.config.email_recipients
+        from_address = from_address or self.config.email_from
+        email_server = email_server or self.config.email_server
+        email_reply_to = self.config.email_reply_to or from_address
 
         msg = EmailMessage()
         msg["Subject"] = subject
-        msg["From"] = config["notifications.email.smtp.sender"]
+        msg["From"] = from_address
         msg["To"] = ", ".join(recipients)
+        msg["Reply-To"] = email_reply_to
 
         if "<html>" in message.lower():
             msg.set_content(
@@ -158,11 +168,11 @@ class Notifier:
         else:
             msg.set_content(message)
 
-        if (reply_to := config["notifications.email.smtp.reply-to"]) is not None:
-            msg["Reply-To"] = reply_to
+        try:
+            with smtplib.SMTP(host=email_server) as smtp:
+                smtp.send_message(msg)
+        except Exception as ee:
+            warnings.warn(f"Failed sending email: {ee}")
+            return False
 
-        host = config["notifications.email.smtp.host"]
-        port = config["notifications.email.smtp.port"]
-
-        with smtplib.SMTP(host=host, port=port) as smtp:
-            smtp.send_message(msg)
+        return True

@@ -10,531 +10,509 @@ from __future__ import annotations
 
 import asyncio
 import pathlib
-import warnings
+import signal
+from functools import wraps
 
-import click
-from click_help_colors import HelpColorsGroup
-from click_option_group import optgroup
-from pydantic import BaseModel
+from typing import Annotated, Optional
 
-from sdsstools.daemonizer import cli_coro
+import typer
+from rich.console import Console
+from typer import Argument, Option
+from typer.core import TyperGroup
 
+from lvmcryo.config import Actions, Config, InteractiveMode, NotificationLevel
 
-VALID_ACTIONS = ["purge-and-fill", "purge", "fill", "abort", "clear"]
 
 LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
 
-
-class OptionsModel(BaseModel):
-    """CLI options."""
-
-    cameras: str | None
-    interactive: str
-    no_prompt: bool | None
-    check_pressure: bool
-    check_temperature: bool
-    max_pressure: float
-    min_pressure: float
-    max_temperature: float
-    min_temperature: float
-    purge_time: float | None
-    min_purge_time: float
-    max_purge_time: float
-    fill_time: float | None
-    min_fill_time: float
-    max_fill_time: float
-    use_thermistors: bool
-    verbose: bool
-    quiet: bool
-    write_json: bool
-    json_path: str | None
-    write_log: bool
-    log_path: str | None
-    write_measurements: bool
-    measurements_path: str | None
-    measurements_extra_time: float
-    generate_qa: bool
-    qa_path: str | None
-    notify: bool
-    dry_run: bool
+info_console = Console()
+err_console = Console(stderr=True)
 
 
-def process_cli_options(
-    ctx: click.Context,
-    options: OptionsModel,
-    use_defaults: bool,
-    configuration_file: str | None = None,
+def cli_coro(
+    signals=(signal.SIGHUP, signal.SIGTERM, signal.SIGINT),
+    shutdown_func=None,
 ):
-    """Updates the input options using defaults."""
+    """Decorator function that allows defining coroutines with click."""
 
-    import datetime
+    def decorator_cli_coro(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            loop = asyncio.get_event_loop()
+            if shutdown_func:
+                for ss in signals:
+                    loop.add_signal_handler(ss, shutdown_func, ss, loop)
+            return loop.run_until_complete(f(*args, **kwargs))
 
-    from sdsstools import Configuration, read_yaml_file
+        return wrapper
 
-    from lvmcryo import config
-    from lvmcryo.tools import is_container
-
-    if use_defaults is True and configuration_file is not None:
-        raise click.UsageError(
-            "--use-defaults and --configuration-file are mutually exclusive.",
-        )
-
-    # Read internal configuration. We'll use this as a last resource in some cases,
-    # regardless of other defaults.
-    internal_config = read_yaml_file(pathlib.Path(__file__).parent / "config.yaml")
-
-    # Select the source of defaults, if any.
-    if use_defaults:
-        defaults = Configuration(internal_config["defaults"])
-
-    elif configuration_file is not None:
-        new_config = read_yaml_file(configuration_file)
-
-        # Get defaults from the new configuration file. This fully overrides
-        # any internal defaults.
-        defaults = Configuration(new_config.get("defaults", {}))
-
-        # Update global config.
-        config._BASE_CONFIG_FILE = config._CONFIG_FILE
-        config._CONFIG_FILE = configuration_file
-        config.reload()
-
-    else:
-        defaults = Configuration({})
-
-    # Update options. If the option value comes from the command line (i.e.,
-    # explicitely defined by the user), leave it be. Otherwise use the default.
-    for option in options.model_fields_set:
-        source = ctx.get_parameter_source(option)
-        if source == click.core.ParameterSource.COMMANDLINE:
-            continue
-
-        if (default_value := defaults[option]) is not None:
-            setattr(options, option, default_value)
-
-    # Now go one by one over the options that may need to be adjusted.
-    if options.cameras is None:
-        options.cameras = internal_config["defaults.cameras"]
-
-    for option in [
-        "max_pressure",
-        "max_temperature",
-        "min_purge_time",
-        "max_purge_time",
-        "min_fill_time",
-        "max_fill_time",
-    ]:
-        value = getattr(options, option)
-
-        if isinstance(value, (float, int)):
-            continue
-        elif value is None:
-            minmax, label = option.split("_")[0:2]
-            internal_value = internal_config[f"limits.{label}.{minmax}"]
-            if internal_value is None:
-                raise ValueError(f"Cannot find internal value for {option!r},")
-            setattr(options, option, internal_value)
-        elif isinstance(value, str) and value.startswith("{{"):
-            param = value.strip("{}")
-            setattr(options, option, internal_config[f"{param}"])
-        else:
-            raise ValueError(f"Invalid value {value} for parameter {option!r}.")
-
-    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
-
-    # Define log path.
-    if options.write_log or options.log_path:
-        options.write_log = True
-        if options.log_path:
-            options.log_path = options.log_path.format(timestamp=timestamp)
-            if not options.log_path.endswith(".log"):
-                options.log_path += "/lvmcryo.log"
-        else:
-            options.log_path = "./lvmcryo.log"
-
-    log_path = pathlib.Path(options.log_path) if options.log_path else None
-
-    # Define measurements path.
-    if options.write_measurements or options.measurements_path:
-        options.write_measurements = True
-        if options.measurements_path is None:
-            if log_path:
-                options.measurements_path = str(log_path.parent / "lvmcryo.parquet")
-            else:
-                options.measurements_path = "./lvmcryo.parquet"
-
-    # Define the QA path
-    if options.generate_qa or options.qa_path:
-        options.generate_qa = True
-        if options.qa_path is None:
-            if log_path:
-                options.qa_path = str(log_path.parent)
-            else:
-                options.qa_path = "./"
-
-    # Define the JSON path
-    if options.write_json or options.write_json:
-        options.write_json = True
-        if options.json_path is None:
-            if log_path is not None:
-                options.json_path = str(log_path.parent / "lvmcryo.json")
-            else:
-                options.json_path = "./lvmcryo.json"
-
-    # Determine if we should run interactively.
-    if options.interactive == "auto":
-        if is_container():
-            options.interactive = "no"
-        else:
-            options.interactive = "yes"
-    elif options.interactive == "yes":
-        if is_container():
-            warnings.warn("Interactive mode may not work in containers.", UserWarning)
-
-    if options.no_prompt is None:
-        if options.interactive == "yes":
-            options.no_prompt = True
-        else:
-            options.no_prompt = False
-
-    if (
-        options.no_prompt
-        and options.use_thermistors is False
-        and (options.purge_time is None or options.fill_time is None)
-    ):
-        raise ValueError(
-            "Cannot run without thermistors and without purge and fill times."
-        )
-
-    return options
+    return decorator_cli_coro
 
 
-@click.group(
-    cls=HelpColorsGroup,
-    help_headers_color="yellow",
-    help_options_color="green",
-)
-def cli():
-    """LVM cryostat-related tools."""
+class NaturalOrderGroup(TyperGroup):
+    """A Typer group that lists commands in order of definition."""
+
+    def list_commands(self, ctx):
+        return self.commands.keys()
 
 
-@cli.command(name="fill")
-@click.argument(
-    "ACTION",
-    type=click.Choice(VALID_ACTIONS, case_sensitive=False),
-    default="purge-and-fill",
+cli = typer.Typer(
+    cls=NaturalOrderGroup,
+    rich_markup_mode="rich",
+    context_settings={"obj": {}},
+    no_args_is_help=True,
+    help="CLI for LVM cryostats.",
 )
-@optgroup.group("Configuration options")
-@optgroup.option(
-    "--use-defaults",
-    "-D",
-    is_flag=True,
-    help="Uses the internal configuration file to set the default values. "
-    "Options explicitely defined will still override the defaults.",
-)
-@optgroup.option(
-    "--configuration-file",
-    type=click.Path(exists=True, dir_okay=False),
-    help="The configuration file to use to set the default values and other options. "
-    "Incompatible with --use-defaults.",
-)
-@optgroup.option(
-    "--interactive",
-    "-i",
-    type=click.Choice(["auto", "yes", "no"], case_sensitive=False),
-    default="auto",
-    help="Controls whether the interactive features are shown. When --interactive auto "
-    "(the default), interactivity is determined based on console mode.",
-)
-@optgroup.option(
-    "--notify/--no-notify",
-    is_flag=True,
-    default=True,
-    help="Whether to send notifications of success/failure to Slack and over email.",
-)
-@optgroup.option(
-    "--no-prompt",
-    is_flag=True,
-    help="Does not prompt the user to finish or abort a purge/fill. Prompting is "
-    "required if --fill-time or --purge-time are not provided and thermistors "
-    "are not used.",
-)
-@optgroup.option(
-    "--dry-run",
-    is_flag=True,
-    help="Test run the code but do not actually open/close any valves.",
-)
-@optgroup.group(
-    "Purge and fill options",
-    help="Configuration for the purge and fill process.",
-)
-@optgroup.option(
-    "--cameras",
-    "-c",
-    type=str,
-    help="Comma-separated cameras to fill. Defaults to all cameras.",
-)
-@optgroup.option(
-    "--check-pressure/--no-check-pressure",
-    default=True,
-    show_default=True,
-    help="Aborts purge/fill if the pressure of any cryostat is above the limit.",
-)
-@optgroup.option(
-    "--check-temperature/--no-check-temperature",
-    default=True,
-    show_default=True,
-    help="Aborts purge/fill if the temperature of a fill cryostat is above the limit.",
-)
-@optgroup.option(
-    "--max-pressure",
-    type=float,
-    help="Maximum cryostat pressure if --check-pressure. Defaults to internal value.",
-)
-@optgroup.option(
-    "--max-temperature",
-    type=float,
-    help="Maximum cryostat temperature if --check-temperature. "
-    "Defaults to internal value.",
-)
-@optgroup.option(
-    "--purge-time",
-    type=float,
-    help="Purge time in seconds. If --use-thermistors, this is effectively the "
-    "maximum purge time.",
-)
-@optgroup.option(
-    "--min-purge-time",
-    type=float,
-    help="Minimum purge time in seconds. Defaults to internal value.",
-)
-@optgroup.option(
-    "--max-purge-time",
-    type=float,
-    help="Maximum purge time in seconds. Defaults to internal value.",
-)
-@optgroup.option(
-    "--fill-time",
-    type=float,
-    help="Fill time in seconds. If --use-thermistors, this is effectively the "
-    "maximum fill time.",
-)
-@optgroup.option(
-    "--min-fill-time",
-    type=float,
-    help="Minimum fill time in seconds. Defaults to internal value.",
-)
-@optgroup.option(
-    "--max-fill-time",
-    type=float,
-    help="Maximum fill time in seconds. Defaults to internal value.",
-)
-@optgroup.option(
-    "--use-thermistors/--no-use-thermistors",
-    default=True,
-    show_default=True,
-    help="Use thermistor values to determine purge/fill time.",
-)
-@optgroup.group("Logging options")
-@optgroup.option(
-    "--quiet",
-    "-q",
-    is_flag=True,
-    help="Disable logging to stdout.",
-)
-@optgroup.option(
-    "--verbose",
-    "-v",
-    is_flag=True,
-    help="Outputs additional information to stdout.",
-)
-@optgroup.option(
-    "--write-log",
-    "-S",
-    is_flag=True,
-    help="Saves the log to a file.",
-)
-@optgroup.option(
-    "--log-path",
-    type=str,
-    help="Path where to save the log file. Implies --write-log. "
-    "Defaults to the current directory.",
-)
-@optgroup.option(
-    "--write-json",
-    is_flag=True,
-    help="Writes a JSON file with the run configuration and status. "
-    "Defaults to a path relative to --log-path if defined, or the current directory.",
-)
-@optgroup.option(
-    "--json-path",
-    type=str,
-    help="Path where to save the JSON data file. Implies --write-json. "
-    "Defaults to a path relative to --write-log-path, if provided, or to the "
-    "current directory.",
-)
-@optgroup.option(
-    "--write-measurements",
-    is_flag=True,
-    help="Saves cryostat pressures and temperatures taken during purge/fill "
-    "to a parquet file.",
-)
-@optgroup.option(
-    "--measurements-path",
-    type=str,
-    help="Path where to save the measurements. Implies --write-measurements. "
-    "Defaults to a path relative to --write-log-path, if provided, or to the "
-    "current directory.",
-)
-@optgroup.option(
-    "--measurements-extra-time",
-    type=float,
-    default=0,
-    help="Additional time to take cryostat measurements after the "
-    "action has been completed.",
-)
-@optgroup.option(
-    "--generate-qa",
-    is_flag=True,
-    help="Generates QA plots.",
-)
-@optgroup.option(
-    "--qa-path",
-    type=str,
-    help="Path where to save the QA files. Implies --generate-qa. "
-    "Defaults to a path relative to --save-log-path, if provided, or to the "
-    "current directory.",
-)
-@click.pass_context
+
+
+@cli.command("ln2")
 @cli_coro()
-async def fill_cli(
-    ctx,
-    action: str,
-    use_defaults: bool = False,
-    configuration_file: str | None = None,
-    **kwargs,
+async def ln2(
+    #
+    # Arguments
+    #
+    action: Annotated[
+        Actions,
+        Argument(help="Action to perform."),
+    ] = Actions.purge_fill,
+    cameras: Annotated[
+        list[str] | None,
+        Argument(
+            help="Comma-separated cameras to fill. Defaults to all cameras. "
+            "Ignored for [green]purge[/], [green]abort[/] and [green]clear[/].",
+        ),
+    ] = None,
+    #
+    # General options
+    #
+    config_file: Annotated[
+        Optional[pathlib.Path],
+        Option(
+            dir_okay=False,
+            exists=True,
+            help="The configuration file to use to set the default values. "
+            "Defaults to the internal configuration file.",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        Option(help="Test run the code but do not actually open/close any valves."),
+    ] = False,
+    interactive: Annotated[
+        InteractiveMode,
+        Option(
+            "--interactive",
+            "-i",
+            help="Controls whether the interactive features are shown. When "
+            "--interactive auto (the default), interactivity is determined "
+            "based on console mode.",
+        ),
+    ] = InteractiveMode.auto,
+    no_prompt: Annotated[
+        bool,
+        Option(
+            help="Does not prompt the user to finish or abort a purge/fill. "
+            "Prompting is required if --fill-time or --purge-time are not provided "
+            "and thermistors are not used.",
+        ),
+    ] = False,
+    with_traceback: Annotated[
+        bool,
+        Option(
+            help="Show the full traceback in case of an error. If not set, only "
+            "the error message is shown. The full traceback is always logged "
+            "to the log file.",
+            show_default=False,
+        ),
+    ] = False,
+    #
+    # Purge and fill options
+    #
+    use_thermistors: Annotated[
+        bool,
+        Option(
+            help="Use thermistor values to determine purge/fill time.",
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = True,
+    check_pressures: Annotated[
+        bool,
+        Option(
+            help="Aborts purge/fill if the pressure of any cryostat "
+            "is above the limit.",
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = True,
+    check_temperatures: Annotated[
+        bool,
+        Option(
+            help="Aborts purge/fill if the temperature of a fill cryostat "
+            "is above the limit.",
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = True,
+    max_pressure: Annotated[
+        Optional[float],
+        Option(
+            help="Maximum cryostat pressure if --check-pressure. "
+            "Defaults to internal value.",
+            show_default=False,
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = None,
+    max_temperature: Annotated[
+        Optional[float],
+        Option(
+            help="Maximum cryostat temperature if --check-temperature. "
+            "Defaults to internal value.",
+            show_default=False,
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = None,
+    purge_time: Annotated[
+        Optional[float],
+        Option(
+            help="Purge time in seconds. If --use-thermistors, this is "
+            "used as the maximum purge time.",
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = None,
+    min_purge_time: Annotated[
+        Optional[float],
+        Option(
+            help="Minimum purge time in seconds. Defaults to internal value.",
+            show_default=False,
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = None,
+    max_purge_time: Annotated[
+        Optional[float],
+        Option(
+            help="Maximum purge time in seconds. Defaults to internal value.",
+            show_default=False,
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = None,
+    fill_time: Annotated[
+        Optional[float],
+        Option(
+            help="Fill time in seconds. If --use-thermistors, this is "
+            "used as the maximum fill time.",
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = None,
+    min_fill_time: Annotated[
+        Optional[float],
+        Option(
+            help="Minimum fill time in seconds. Defaults to internal value.",
+            show_default=False,
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = None,
+    max_fill_time: Annotated[
+        Optional[float],
+        Option(
+            help="Maximum fill time in seconds. Defaults to internal value.",
+            show_default=False,
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = None,
+    #
+    # Notification options
+    #
+    notify: Annotated[
+        bool,
+        Option(
+            help="Sends a notification when the action is completed. "
+            "In not set, --slack and --email are ignored. "
+            "Notifications are not sent for the [green]abort[/] "
+            "and [green]clear-lock[/] actions.",
+            rich_help_panel="Notifications",
+            show_default=True,
+        ),
+    ] = False,
+    slack: Annotated[
+        bool,
+        Option(
+            help="Send a Slack notification when the action is completed.",
+            rich_help_panel="Notifications",
+        ),
+    ] = True,
+    email: Annotated[
+        bool,
+        Option(
+            help="Send an email notification when the action is completed.",
+            rich_help_panel="Notifications",
+        ),
+    ] = True,
+    email_level: Annotated[
+        NotificationLevel,
+        Option(
+            help="Send an email notification only on error or always.",
+            case_sensitive=False,
+            rich_help_panel="Notifications",
+        ),
+    ] = NotificationLevel.error,
+    #
+    # Logging options
+    #
+    quiet: Annotated[
+        bool,
+        Option(
+            "--quiet",
+            "-q",
+            help="Disable logging to stdout.",
+            rich_help_panel="Logging",
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        Option(
+            "--verbose",
+            "-v",
+            help="Outputs additional information to stdout.",
+            rich_help_panel="Logging",
+        ),
+    ] = False,
+    write_log: Annotated[
+        bool,
+        Option(
+            "--write-log",
+            "-S",
+            help="Saves the log to a file.",
+            rich_help_panel="Logging",
+        ),
+    ] = False,
+    log_path: Annotated[
+        Optional[pathlib.Path],
+        Option(
+            exists=False,
+            help="Path where to save the log file. Implies --write-log. "
+            "Defaults to the current directory.",
+            rich_help_panel="Logging",
+        ),
+    ] = None,
+    write_json: Annotated[
+        bool,
+        Option(
+            help="Saves the log in JSON format. Uses the same path as the file log."
+            "Ignored if --write-log is not set.",
+            rich_help_panel="Logging",
+        ),
+    ] = False,
+    write_data: Annotated[
+        bool,
+        Option(
+            "--write-data",
+            help="Saves cryostat pressures and temperatures taken during purge/fill "
+            "to a parquet file.",
+            rich_help_panel="Logging",
+        ),
+    ] = False,
+    data_path: Annotated[
+        Optional[pathlib.Path],
+        Option(
+            exists=False,
+            help="Path where to save the data. Implies --write-data. "
+            "Defaults to a path relative to the log path.",
+            rich_help_panel="Logging",
+        ),
+    ] = None,
+    data_extra_time: Annotated[
+        float,
+        Option(
+            help="Additional time to take cryostat data after the "
+            "action has been completed. The command will not complete until "
+            "data collection has finished.",
+            rich_help_panel="Logging",
+        ),
+    ] = 0,
 ):
-    """Run the LN2 purge/fill routines."""
+    """Handles LN2 purges and fills.
 
-    import logging
-    from tempfile import NamedTemporaryFile
-
-    from lvmcryo import log
-    from lvmcryo.handlers.ln2 import LN2Handler
-    from lvmcryo.notifier import Notifier
-    from lvmcryo.runner import collect_mesurement_data, ln2_runner, notify_failure
-    from lvmcryo.tools import JSONWriter, close_all_valves
-
-    error: Exception | None = None
-
-    if action == "abort":
-        log.warning("Closing all valves.")
-        await close_all_valves()
-        return
-    elif action == "clear":
-        LOCKFILE.unlink(missing_ok=True)
-        return
-
-    options = process_cli_options(
-        ctx,
-        OptionsModel(**kwargs),
-        use_defaults=use_defaults,
-        configuration_file=configuration_file,
-    )
-
-    if options.quiet:
-        log.sh.setLevel(logging.ERROR)
-    elif options.verbose:
-        log.sh.setLevel(logging.DEBUG)
-
-    if options.write_log and options.log_path:
-        log_path = pathlib.Path(options.log_path)
-    else:
-        # Write log to a temporary path so we can recover it for notifications.
-        log_path = pathlib.Path(NamedTemporaryFile(suffix=".log", delete=True).name)
-
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    log.start_file_logger(str(log_path), mode="w", rotating=False)
-
-    if options.cameras is None:
-        raise RuntimeError("No cameras specified.")
-
-    if isinstance(options.cameras, str):
-        cameras = list(map(lambda s: s.strip(), options.cameras.split(",")))
-    else:
-        cameras = options.cameras
-
-    interactive = True if options.interactive == "yes" else False
-
-    handler = LN2Handler(cameras=cameras, interactive=interactive)
-    notifier = Notifier(silent=not options.notify)
-
-    try:
-        await ln2_runner(handler, options, notifier=notifier)
-
-    except Exception as err:
-        JSONWriter(options.json_path, "times", handler.event_times.model_dump_json())
-
-        if handler.failed:
-            JSONWriter(options.json_path, "status", "failed")
-
-        await notify_failure(err, ln2_handler=handler, notifier=notifier)
-
-        error = err
-
-    await asyncio.sleep(options.measurements_extra_time)
-    if options.write_measurements and options.measurements_path:
-        measurements_path = pathlib.Path(options.measurements_path)
-        await collect_mesurement_data(handler, path=measurements_path)
-
-    if error is not None:
-        raise error
-
-
-@cli.command(name="ion")
-@click.argument("CAMERAS", type=str, nargs=-1, required=True)
-@click.option(
-    "--on/--off",
-    default=None,
-    is_flag=True,
-    help="Turns the ion pump on or off.",
-)
-@cli_coro()
-async def lvm_ion_cli(cameras: list[str], on: bool | None = None):
-    """Controls the ion pumps.
-
-    Without ``--on`` or ``--off``, returns the current status of the ion pump.
-    A list of space-separated cameras can be provided. A special camera ``ALL``
-    can be used to control all cameras.
+    Allowed actions are: [bold blue]purge-and-fill[/] which executes a purge followed
+    by a fill, [bold blue]purge[/] which only purges, [bold blue]fill[/] which only
+    fills, [bold blue]abort[/] which aborts an ongoing purge/fill by closing all the
+    valves, and [bold blue]clear[/] which removes the lock.
 
     """
 
-    from lvmcryo import config, log
-    from lvmcryo.ion import read_ion_pump, toggle_pump
+    from logging import FileHandler
 
-    cameras = list(map(lambda x: x.lower(), cameras))
+    from sdsstools.logger import CustomJsonFormatter, get_logger
+
+    from lvmcryo.notifier import Notifier
+    from lvmcryo.tools import LockExistsError, ensure_lock
+
+    if action == Actions.abort:
+        return await _close_valves_helper()
+    elif action == Actions.clear_lock:
+        if LOCKFILE.exists():
+            LOCKFILE.unlink()
+            info_console.print("[green]Lock file removed.[/]")
+        else:
+            info_console.print("[yellow]No lock file found.[/]")
+        return
+
+    try:
+        config = Config(
+            action=action,
+            cameras=cameras or [],
+            config_file=config_file,
+            dry_run=dry_run,
+            interactive=interactive,
+            no_prompt=no_prompt,
+            notify=notify,
+            slack=slack,
+            email=email,
+            email_level=email_level,
+            use_thermistors=use_thermistors,
+            check_pressures=check_pressures,
+            check_temperatures=check_temperatures,
+            max_pressure=max_pressure,
+            max_temperature=max_temperature,
+            purge_time=purge_time,
+            min_purge_time=min_purge_time,
+            max_purge_time=max_purge_time,
+            fill_time=fill_time,
+            min_fill_time=min_fill_time,
+            max_fill_time=max_fill_time,
+            quiet=quiet,
+            verbose=verbose,
+            write_log=write_log,
+            write_json=write_json,
+            log_path=log_path,
+            write_data=write_data,
+            data_path=data_path,
+            data_extra_time=data_extra_time,
+        )
+    except ValueError as err:
+        err_console.print(f"[red]Error parsing configuration:[/] {err}")
+        return typer.Exit(1)
+
+    log = get_logger("lvmcryo", use_rich_handler=True)
+    log.setLevel(5)
+    log.rich_console = info_console
+
+    if config.write_log and config.log_path:
+        log.start_file_logger(str(config.log_path))
+
+        if write_json:
+            jsonHandler = FileHandler(config.log_path.with_suffix(".json"), mode="w")
+            jsonHandler.setLevel(5)
+            jsonHandler.setFormatter(CustomJsonFormatter())
+            log.addHandler(jsonHandler)
+
+    if verbose:
+        log.sh.setLevel(5)
+    if quiet:
+        log.sh.setLevel(30)
+
+    # Always create a notifier. If the entielement is disabled the
+    # notifer won't do anything. This simplifies the code.
+    notifier = Notifier.from_config(config.internal_config)
+    notifier.disabled = not config.notify
+    notifier.slack_disabled = not config.slack
+    notifier.email_disabled = not config.email
+
+    try:
+        with ensure_lock(LOCKFILE):
+            pass
+    except LockExistsError:
+        err_console.print(
+            "[red]Lock file already exists.[/] Another instance may be "
+            "performing an operation. Use [green]lvmcryo ln2 clear-lock[/] to remove "
+            "the lock."
+        )
+        return typer.Exit(1)
+    except Exception as err:
+        if with_traceback:
+            raise
+
+        err_console.print(f"[red]Error found during {action.value}:[/] {err}")
+
+        log.sh.setLevel(1000)  # Log the traceback to file but do not print.
+        log.exception(f"Error during {action.value}.", exc_info=err)
+        return typer.Exit(1)
+
+
+async def _close_valves_helper():
+    """Closes all the outlets."""
+
+    from lvmcryo.tools import close_all_valves
+
+    try:
+        await close_all_valves()
+        info_console.print("[green]All valves closed.[/]")
+    except Exception as err:
+        info_console.print(f"[red]Error closing valves:[/] {err}")
+        return typer.Exit(1)
+
+    return typer.Exit(0)
+
+
+@cli.command("close-valves")
+@cli_coro()
+async def close_valves():
+    """Closes all solenoid valves."""
+
+    return await _close_valves_helper()
+
+
+@cli.command("ion")
+@cli_coro()
+async def ion(
+    cameras: Annotated[
+        list[str] | None,
+        Argument(
+            help="List of cameras to handle. Defaults to all cameras.",
+            case_sensitive=False,
+            show_default=False,
+        ),
+    ],
+    on: Annotated[
+        Optional[bool],
+        Option(
+            "--on/--off",
+            help="Turns the ion pump on or off. If not provided, "
+            "the current status of the ion pump is returned.",
+            show_default=False,
+        ),
+    ] = None,
+):
+    """Controls the ion pumps.
+
+    Without ``--on`` or ``--off``, returns the current status of the ion pump.
+    A list of space-separated cameras can be provided.
+
+    """
+
+    from lvmopstools.devices.ion import read_ion_pumps, toggle_ion_pump
+
+    cameras = list(map(lambda x: x.lower(), cameras)) if cameras else ["all"]
+
     if "all" in cameras:
-        cameras = list(config["ion"].keys())
+        cameras = ["all"]
+
+    if on is None:
+        query_cameras = cameras if cameras != ["all"] else None
+        status = await read_ion_pumps(query_cameras)
+        info_console.print(status)
+        return
+
+    error: bool = False
 
     for camera in cameras:
         try:
-            if on is None:
-                status = await read_ion_pump(camera)
-                log.info(
-                    f"{camera} - "
-                    f"Pressure: {status['pressure']:.3g} Torr - "
-                    f"On: {status['is_on']}"
-                )
-            else:
-                await toggle_pump(camera, on=on)
-
+            await toggle_ion_pump(camera, on)
         except Exception as err:
-            log.warning(f"Error handling ion pump for camera {camera}: {err}")
+            info_console.print(
+                f"[yellow]Error handling ion pump for camera {camera}:[/] {err}"
+            )
+            error = True
 
-
-def main():
-    cli(max_content_width=100)
+    return typer.Exit(error)
 
 
 if __name__ == "__main__":
-    main()
+    cli()

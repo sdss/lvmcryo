@@ -21,19 +21,19 @@ from pygments.formatters import HtmlFormatter
 from pygments.lexers.python import PythonTracebackLexer
 from pygments.lexers.rust import RustLexer
 
+from lvmopstools.devices.specs import spectrograph_status
+
 from lvmcryo import log
-from lvmcryo.__main__ import OptionsModel
 from lvmcryo.handlers import LN2Handler
 from lvmcryo.notifier import Notifier
 from lvmcryo.tools import (
     JSONWriter,
     close_all_valves,
-    get_spectrograph_status,
     render_template,
 )
 
 
-__all__ = ["ln2_runner"]
+__all__ = ["ln2_runner", "clear_lock", "abort"]
 
 
 async def signal_handler(handler: LN2Handler):
@@ -75,7 +75,7 @@ async def ln2_runner(
             indent=4,
         )
 
-    spec_status = await get_spectrograph_status(list(handler.get_specs()))
+    spec_status = await spectrograph_status(list(handler.get_specs()))
     JSONWriter(options.json_path, "cryostat_status.before_purge", spec_status)
 
     # Inform of the start of the fill in Slack.
@@ -134,7 +134,7 @@ async def ln2_runner(
     JSONWriter(options.json_path, "status", "success")
     handler.failed = False  # Just in case.
 
-    spec_status = await get_spectrograph_status(list(handler.get_specs()))
+    spec_status = await spectrograph_status(list(handler.get_specs()))
     JSONWriter(options.json_path, "cryostat_status.after_fill", spec_status)
 
 
@@ -170,7 +170,7 @@ async def notify_failure(
     log.error("Something went wrong. Sending alerts.")
 
     if include_status:
-        spec_data = await get_spectrograph_status()
+        spec_data = await spectrograph_status()
     else:
         spec_data = None
 
