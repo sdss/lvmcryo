@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import os
 import pathlib
 import time
 from contextlib import suppress
 from functools import partial
+from logging import getLogger
 
 from typing import TYPE_CHECKING, Any
 
@@ -32,13 +32,8 @@ if TYPE_CHECKING:
     from sdsstools.configuration import Configuration
 
 
-async def valve_info(valve: str, config: Configuration | None = None) -> dict[str, Any]:
-    """Retrieves valve information from the NPS."""
-
-    config = config or get_internal_config()
-
-    actor = config[f"valves.{valve}.actor"]
-    outlet = config[f"valves.{valve}.outlet"]
+async def outlet_info(actor: str, outlet: str) -> dict[str, Any]:
+    """Retrieves outlet information from the NPS."""
 
     async with CluClient() as client:
         cmd = await client.send_command(actor, f"status {outlet}")
@@ -49,19 +44,20 @@ async def valve_info(valve: str, config: Configuration | None = None) -> dict[st
 
 
 async def valve_on_off(
-    valve: str,
+    actor: str,
+    outlet_name: str,
     on: bool,
     timeout: float | None = None,
     use_script: bool = True,
-    config: Configuration | None = None,
 ) -> int | None:
     """Turns a valve on/off.
 
     Parameters
     ----------
-    valve
-        The name of the valve. Must be one of the valves defined in the
-        configuration file.
+    actor
+        The NPS actor that commands the valve.
+    outlet_name
+        The name of the outlet to which the valve is connected.
     on
         Whether to turn the valve on or off.
     timeout
@@ -71,8 +67,6 @@ async def valve_on_off(
         (must be defined in the NPS) to set a timeout after which the valve
         will be turned off. With ``use_script=False``, a ``timeout`` will
         block until the timeout is reached.
-    config
-        The configuration object with information about the valves.
 
     Returns
     -------
@@ -82,30 +76,21 @@ async def valve_on_off(
 
     """
 
-    config = config or get_internal_config()
-
-    if valve not in config["valves"]:
-        raise ValueError(f"Unknown valve {valve!r}.")
-
-    actor = config[f"valves.{valve}.actor"]
-    outlet = config[f"valves.{valve}.outlet"]
-
     is_script: bool = False
 
     if on is True and isinstance(timeout, (int, float)) and use_script is True:
         # First we need to get the outlet number.
-        outlet_info = await valve_info(valve)
-        id_ = outlet_info["id"]
+        info = await outlet_info(actor, outlet_name)
+        id_ = info["id"]
 
         command_string = f"scripts run cycle_with_timeout {id_} {timeout}"
-
         is_script = True
 
     else:
         if on is False or timeout is None:
-            command_string = f"{'on' if on else 'off'} {outlet}"
+            command_string = f"{'on' if on else 'off'} {outlet_name}"
         else:
-            command_string = f"on --off-after {timeout} {outlet}"
+            command_string = f"on --off-after {timeout} {outlet_name}"
 
     async with CluClient() as client:
         command = await client.send_command(actor, command_string)
@@ -141,9 +126,14 @@ async def close_all_valves(config: Configuration | None = None):
     """Closes all the outlets."""
 
     config = config or get_internal_config()
+    valve_info = config["valves"]
 
-    valves = list(config["valves"])
-    await asyncio.gather(*[valve_on_off(valve, False) for valve in valves])
+    await asyncio.gather(
+        *[
+            valve_on_off(valve_info["actor"], valve_info["outlet"], False)
+            for valve in valve_info
+        ]
+    )
 
 
 def is_container():
@@ -160,8 +150,6 @@ class TimerProgressBar:
     """A progress bar with a timer."""
 
     def __init__(self, console: Console | None = None):
-        self.console = console
-
         self.progress = Progress(
             TextColumn("[yellow]({task.fields[label]})"),
             TextColumn("[progress.description]{task.description}"),
@@ -171,8 +159,9 @@ class TimerProgressBar:
             expand=True,
             transient=False,
             auto_refresh=True,
-            console=self.console,  # Need to use same console as logger.
+            console=console,  # Need to use same console as logger.
         )
+        self.console = self.progress.console
 
         self._tasks: dict[TaskID, asyncio.Task] = {}
 
@@ -186,7 +175,9 @@ class TimerProgressBar:
         """Starts the timer."""
 
         task_id = self.progress.add_task(
-            f"[blue] {initial_description} ", total=int(max_time), label=label
+            f"[blue] {initial_description} ",
+            total=int(max_time),
+            label=label,
         )
 
         self.progress.start()
@@ -248,7 +239,6 @@ class TimerProgressBar:
 
         del self._tasks[task_id]
 
-        # self._done_timer()
         if clear:
             self.progress.update(task_id, visible=False)
 
@@ -259,11 +249,13 @@ async def cancel_task(task: asyncio.Future | None):
     """Safely cancels a task."""
 
     if task is None or task.done():
-        return
+        return None
 
     task.cancel()
     with suppress(asyncio.CancelledError):
         await task
+
+    return None
 
 
 def render_template(
@@ -307,48 +299,6 @@ def render_template(
     return html_template.render(**render_data)
 
 
-def JSONWriter(filename: str | os.PathLike | None, key: str, data: Any):
-    """Writes or updates a JSON file.
-
-    Parameters
-    ----------
-    filename
-        The path to the file to write.
-    key
-        The key to be updated. To update a nested key, use dot notation, e.g.,
-        ``key1.subkey2.subsubkey3``.
-    data
-        Data to set as the value for ``key``.
-
-    """
-
-    if filename is None:
-        return
-
-    filename = pathlib.Path(filename)
-
-    json_: dict[str, Any]
-    if filename.exists():
-        json_ = json.load(open(filename))
-    else:
-        json_ = {}
-
-    current = json_
-    for ii, kk in enumerate(key.split(".")):
-        if ii == len(key.split(".")) - 1:
-            current[kk] = data
-            break
-
-        if kk not in current or not isinstance(current[kk], dict):
-            current[kk] = {}
-
-        current = current[kk]
-
-    json.dump(json_, open(filename, "w"), indent=4)
-
-    return json_
-
-
 class LockExistsError(RuntimeError):
     """Raised when a lock file already exists."""
 
@@ -374,3 +324,12 @@ def ensure_lock(lockfile: str | os.PathLike | pathlib.Path):
         yield
     finally:
         lockfile.unlink()
+
+
+def get_fake_logger():
+    """Gets a logger with a disabled handler."""
+
+    logger = getLogger(__name__)
+    logger.disabled = True
+
+    return logger

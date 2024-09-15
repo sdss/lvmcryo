@@ -10,15 +10,27 @@ from __future__ import annotations
 
 import pathlib
 import smtplib
+import traceback
 import warnings
 from email.message import EmailMessage
 
-import httpx
-from pydantic import BaseModel, ValidationError
+from typing import TYPE_CHECKING
 
-from sdsstools.configuration import Configuration
+import httpx
+import pygments
+from pydantic import BaseModel, ValidationError
+from pygments.formatters import HtmlFormatter
+from pygments.lexers.python import PythonTracebackLexer
+from pygments.lexers.rust import RustLexer
+
+from lvmopstools.devices.specs import spectrograph_pressures, spectrograph_temperatures
 
 from lvmcryo.config import NotificationLevel, get_internal_config
+from lvmcryo.tools import get_fake_logger, render_template
+
+
+if TYPE_CHECKING:
+    from lvmcryo.handlers import LN2Handler
 
 
 class NotifierConfig(BaseModel):
@@ -38,7 +50,10 @@ class NotifierConfig(BaseModel):
 class Notifier:
     """Sends notifications over Slack or email."""
 
-    def __init__(self, config_data: Configuration | dict):
+    def __init__(self, config_data: dict | str | pathlib.Path | None = None):
+        if config_data is None or isinstance(config_data, (str, pathlib.Path)):
+            config_data = get_internal_config(config_data)
+
         if not config_data["notifications"]:
             raise ValidationError("Configuration does not have notifications section.")
 
@@ -49,17 +64,7 @@ class Notifier:
         self.email_disabled: bool = False
 
     def __repr__(self):
-        return self.config.__repr__()
-
-    @classmethod
-    def from_config(cls, config: Configuration | dict | str | pathlib.Path) -> Notifier:
-        """Creates a `.Notifier` instance from a configuration object or file."""
-
-        if isinstance(config, (dict, Configuration)):
-            return cls(config)
-
-        config_data = get_internal_config(config)
-        return cls(config_data)
+        return f"<Notifier (disabled={str(self.disabled).lower()})>"
 
     async def post_to_slack(
         self,
@@ -120,7 +125,7 @@ class Notifier:
     def send_email(
         self,
         message: str,
-        subject: str = "A message from the LVM Cryo system",
+        subject: str = "A message from lvmcryo",
         recipients: list[str] | None = None,
         from_address: str | None = None,
         email_server: str | None = None,
@@ -150,7 +155,13 @@ class Notifier:
 
         recipients = recipients or self.config.email_recipients
         from_address = from_address or self.config.email_from
+
         email_server = email_server or self.config.email_server
+        email_host, *email_rest = email_server.split(":")
+        email_port: int = 0
+        if len(email_rest) == 1:
+            email_port = int(email_rest[0])
+
         email_reply_to = self.config.email_reply_to or from_address
 
         msg = EmailMessage()
@@ -169,10 +180,108 @@ class Notifier:
             msg.set_content(message)
 
         try:
-            with smtplib.SMTP(host=email_server) as smtp:
+            with smtplib.SMTP(host=email_host, port=email_port) as smtp:
                 smtp.send_message(msg)
         except Exception as ee:
             warnings.warn(f"Failed sending email: {ee}")
             return False
 
         return True
+
+    async def notify_failure(
+        self,
+        error: str | Exception | None = None,
+        handler: LN2Handler | None = None,
+        channels: list[str] = ["slack", "email"],
+        include_status: bool = True,
+        include_log: bool = True,
+    ):
+        """Notifies a fill failure to the users."""
+
+        log = handler.log if handler else get_fake_logger()
+
+        spec_data: dict[str, dict] | None = None
+        if include_status:
+            try:
+                temp_data = await spectrograph_temperatures()
+                pressure_data = await spectrograph_pressures()
+
+                # Massage the data into the format that the template expects.
+                cryostats = list(pressure_data)
+                spec_data = {}
+                for cryostat in cryostats:
+                    spec_data[cryostat] = {
+                        "ccd": temp_data.get(f"{cryostat}_ccd", -999),
+                        "ln2": temp_data.get(f"{cryostat}_ln2", -999),
+                        "pressure": pressure_data.get(cryostat, -999),
+                    }
+
+            except Exception as err:
+                log.error(f"Failed retrieving spectrograph data: {err!r}")
+
+        formatter = HtmlFormatter(style="default")
+
+        log_blob = None
+        if include_log:
+            fh = getattr(log, "fh", None)
+            if fh:
+                fh.flush()
+            log_filename = getattr(log, "log_filename", None)
+            if log_filename:
+                log_data = open(log_filename, "r").read()
+                log_blob = pygments.highlight(log_data, RustLexer(), formatter)
+
+        for channel in channels:
+            try:
+                if channel == "slack":
+                    slack_message = (
+                        "Something went wrong with the LN₂ fill. "
+                        "Please check the status of the spectrographs. "
+                        "Grafana plots are available <https://lvm-grafana.lco.cl|here>."
+                    )
+                    if error:
+                        if isinstance(error, Exception):
+                            trace = "".join(traceback.format_exception(error))
+                            slack_message += f"\n```{trace}```"
+                        else:
+                            slack_message += f"\nThe error was: {error}"
+
+                    await self.post_to_slack(
+                        text=slack_message,
+                        level=NotificationLevel.error,
+                    )
+
+                elif channel == "email":
+                    try:
+                        if isinstance(error, Exception):
+                            email_error = pygments.highlight(
+                                "".join(traceback.format_exception(error)),
+                                PythonTracebackLexer(),
+                                formatter,
+                            )
+                        else:
+                            email_error = error
+
+                        message = render_template(
+                            "alert_message.html",
+                            render_data=dict(
+                                event_times=handler.event_times if handler else {},
+                                spec_data=spec_data,
+                                log_blob=log_blob,
+                                log_css=formatter.get_style_defs(),
+                                error=email_error,
+                            ),
+                        )
+                    except Exception as err:
+                        log.error(f"Failed rendering alert template: {err!r}")
+                        log.warning("Sending a plain text message.")
+                        message = "LN2 fill failed. Please check the cryostats!!!"
+
+                    self.send_email(
+                        subject="ERROR: LVM LN2 fill failed",
+                        message=message,
+                    )
+
+            except Exception as err:
+                log.error(f"Failed sending alert over {channel}: {err!r}")
+                continue

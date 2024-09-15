@@ -10,21 +10,20 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import logging
+from dataclasses import dataclass, field
 
 from typing import Coroutine
 
 import sshkeyboard
 from pydantic import BaseModel
-from pydantic.dataclasses import dataclass
 
-from sdsstools.configuration import RecursiveDict
+from lvmopstools.devices.specs import spectrograph_pressures, spectrograph_temperatures
+from lvmopstools.devices.thermistors import read_thermistors
 
-from lvmcryo import config, log
+from lvmcryo.config import ValveConfig, get_internal_config
 from lvmcryo.handlers.valve import ValveHandler
-from lvmcryo.tools import (
-    get_spectrograph_status,
-    read_thermistors,
-)
+from lvmcryo.tools import TimerProgressBar, get_fake_logger
 
 
 class EventDict(BaseModel):
@@ -36,6 +35,16 @@ class EventDict(BaseModel):
     fill_complete: datetime.datetime | None = None
     failed: datetime.datetime | None = None
     aborted: datetime.datetime | None = None
+
+
+def get_valve_info():
+    """Returns the valve information from the configuration file."""
+
+    internal_config = get_internal_config()
+
+    return {
+        valve: ValveConfig(**data) for valve, data in internal_config["valves"].items()
+    }
 
 
 @dataclass
@@ -50,20 +59,44 @@ class LN2Handler:
         The name of the purge valve.
     interactive
         Whether to show interactive features.
+    log
+        The logger instance. A new logger is created if not provided.
+    valve_info
+        A dictionary of valve name to actor and outlet name. If not provided,
+        the internal configuration will be used.
 
     """
 
-    cameras: list[str] | None = None
+    cameras: list[str]
     purge_valve: str = "purge"
     interactive: bool = False
+    log: logging.Logger = field(default_factory=get_fake_logger)
+    valve_info: dict[str, ValveConfig] = field(default_factory=get_valve_info)
 
     def __post_init__(self):
-        if self.cameras is None:
-            self.cameras = list(config["defaults.cameras"])
+        if self.interactive:
+            console = getattr(self.log, "rich_console", None)
+            self._progress_bar = TimerProgressBar(console)
+        else:
+            self._progress_bar = None
 
         self._valve_handlers: dict[str, ValveHandler] = {}
         for camera in self.cameras + [self.purge_valve]:
-            self._valve_handlers[camera] = ValveHandler(camera)
+            if camera not in self.valve_info:
+                raise ValueError(f"Cannot find valve infor for {camera!r}.")
+
+            actor = self.valve_info[camera].actor
+            outlet = self.valve_info[camera].outlet
+            thermistor = self.valve_info[camera].thermistor
+
+            self._valve_handlers[camera] = ValveHandler(
+                camera,
+                actor,
+                outlet,
+                thermistor_channel=thermistor,
+                progress_bar=self._progress_bar,
+                log=self.log,
+            )
 
         self.event_times = EventDict()
         self.failed: bool = False
@@ -107,76 +140,67 @@ class LN2Handler:
 
         """
 
-        log.info("Checking pressure and temperature ...")
-
-        assert self.cameras is not None
-
-        if max_pressure is None:
-            max_pressure = config["limits.pressure.max"]
-        if max_temperature is None:
-            max_temperature = config["limits.temperature.max"]
-
-        assert max_pressure is not None and max_temperature is not None
-
-        specs = self.get_specs()
+        self.log.info("Checking pressure and temperature ...")
 
         try:
-            spec_status = await get_spectrograph_status(list(specs))
-            if not isinstance(spec_status, dict):
-                raise RuntimeError("Invalid spectrograph response.")
+            spec_temperatures = await spectrograph_temperatures()
         except Exception as err:
-            raise RuntimeError(f"Failed reading spectrograph status: {err}")
+            raise RuntimeError(f"Failed reading spectrograph temperatures: {err}")
+        else:
+            for camera in self.cameras:
+                ln2_temp = spec_temperatures[f"{camera}_ln2"]
 
-        spec_status = RecursiveDict(spec_status)
+                if ln2_temp is None:
+                    self.failed = True
+                    raise RuntimeError(f"Failed retrieving {camera!r} LN2 temperature.")
 
-        for camera in self.cameras:
-            ln2_temp = spec_status[f"{camera}.ln2"]
-            if ln2_temp is None:
-                self.failed = True
-                raise RuntimeError(f"Invalid {camera!r} temperature.")
-            if ln2_temp > max_temperature:
-                self.failed = True
-                raise RuntimeError(
-                    f"LN2 temperature for camera {camera} is {ln2_temp:.1f} K "
-                    f"which is above the maximum allowed temperature "
-                    f"({max_temperature:.1f} K)."
-                )
+                if max_temperature is not None and ln2_temp > max_temperature:
+                    self.failed = True
+                    raise RuntimeError(
+                        f"LN2 temperature for camera {camera} is {ln2_temp:.1f} C "
+                        f"which is above the maximum allowed temperature "
+                        f"({max_temperature:.1f} C)."
+                    )
 
-            pressure = spec_status[f"{camera}.pressure"]
-            if pressure is None:
-                self.failed = True
-                raise RuntimeError(f"Invalid {camera!r} pressure.")
-            if pressure > max_pressure:
-                self.failed = True
-                raise RuntimeError(
-                    f"Pressure for camera {camera} is {pressure} K "
-                    f"which is above the maximum allowed pressure "
-                    f"({max_pressure})."
-                )
+        try:
+            spec_pressures = await spectrograph_pressures()
+        except Exception as err:
+            raise RuntimeError(f"Failed reading spectrograph pressures: {err}")
+        else:
+            for camera in self.cameras:
+                pressure = spec_pressures[camera]
+
+                if pressure is None:
+                    self.failed = True
+                    raise RuntimeError(f"Failed retrieving {camera!r} pressure.")
+
+                if max_pressure is not None and pressure > max_pressure:
+                    self.failed = True
+                    raise RuntimeError(
+                        f"Pressure for camera {camera} is {pressure} Torr "
+                        f"which is above the maximum allowed pressure "
+                        f"({max_pressure} Torr)."
+                    )
 
         if check_thermistors:
-            log.info("Checking thermistors ...")
+            self.log.info("Checking thermistors ...")
 
             try:
                 thermistors = await read_thermistors()
-                assert isinstance(thermistors, dict), "invalid return type."
             except Exception as err:
                 self.failed = True
                 raise RuntimeError(f"Failed reading thermistors: {err}")
 
             for valve in self._valve_handlers:
-                channel = self._valve_handlers[valve].thermistor_channel
-                assert channel is not None, "invalid thermistor channel."
+                channel = self._valve_handlers[valve].thermistor_channel or valve
+                assert channel is not None, f"invalid thermistor channel {channel!r}."
 
-                thermistor = thermistors[channel]
-                if thermistor is None:
-                    self.failed = True
-                    raise RuntimeError(f"Invalid {valve!r} thermistor.")
-                if thermistor is True:
+                thermistor_value = thermistors[channel]
+                if thermistor_value is True:
                     self.failed = True
                     raise RuntimeError(f"Thermistor for valve {valve} is active.")
 
-        log.info("All checks passed.")
+        self.log.info("All checks passed.")
 
         return True
 
@@ -207,7 +231,7 @@ class LN2Handler:
             using the thermistor.
         max_purge_time
             The maximum time to keep the purge valve open. If
-            ``use_thermistor=None`` this is effectively the purge time unless
+            ``use_thermistor=False`` this is effectively the purge time unless
             ``prompt=True`` and the purge is cancelled before reaching the
             timeout.
         prompt
@@ -223,29 +247,28 @@ class LN2Handler:
             purge_valve = self.purge_valve
 
         valve_handler = self._valve_handlers[purge_valve]
-        min_open_time = min_purge_time or 0.0
 
         self.event_times.purge_start = self._get_now()
 
-        log.info(
+        self.log.info(
             f"Beginning purge using valve {valve_handler.valve!r} with "
-            f"use_thermistor={use_thermistor}, min_open_time={min_open_time}, "
+            f"use_thermistor={use_thermistor}, min_open_time={min_purge_time}, "
             f"timeout={max_purge_time}."
         )
 
         prompt = prompt if prompt is not None else self.interactive
         if prompt:
-            log.warning('Press "x" to abort or "enter" to finish the purge.')
+            self.log.warning('Press "x" to abort or "enter" to finish the purge.')
             self._kb_monitor()
 
         try:
             if dry_run is False:
                 await valve_handler.start_fill(
-                    min_open_time=min_open_time,
+                    min_open_time=min_purge_time or 0.0,
                     timeout=max_purge_time,
                     use_thermistor=use_thermistor,
                 )
-            log.info("Purge complete.")
+            self.log.info("Purge complete.")
             self.event_times.purge_complete = self._get_now()
         except Exception:
             self.failed = True
@@ -258,7 +281,7 @@ class LN2Handler:
         self,
         cameras: list[str] | None = None,
         use_thermistors: bool = True,
-        min_fill_time: float | None = None,
+        min_fill_time: float|None=None,
         max_fill_time: float | None = None,
         prompt: bool | None = None,
         dry_run: bool = False,
@@ -293,8 +316,6 @@ class LN2Handler:
         if cameras is None or len(cameras) == 0:
             raise RuntimeError("No cameras selected for filling.")
 
-        min_open_time = min_fill_time or 0.0
-
         fill_tasks: list[Coroutine] = []
 
         for camera in cameras:
@@ -305,7 +326,7 @@ class LN2Handler:
 
             fill_tasks.append(
                 valve_handler.start_fill(
-                    min_open_time=min_open_time,
+                    min_open_time=min_fill_time or 0.0,
                     timeout=max_fill_time,
                     use_thermistor=use_thermistors,
                 )
@@ -313,21 +334,21 @@ class LN2Handler:
 
         self.event_times.fill_start = self._get_now()
 
-        log.info(
+        self.log.info(
             f"Beginning fill on cameras {cameras!r} with "
-            f"use_thermistors={use_thermistors}, min_open_time={min_open_time}, "
+            f"use_thermistors={use_thermistors}, min_open_time={min_fill_time}, "
             f"timeout={max_fill_time}."
         )
 
         prompt = prompt if prompt is not None else self.interactive
         if prompt:
-            log.warning('Press "x" to abort or "enter" to finish the purge.')
+            self.log.warning('Press "x" to abort or "enter" to finish the purge.')
             self._kb_monitor()
 
         try:
             if dry_run is False:
                 await asyncio.gather(*fill_tasks)
-            log.info("Fill complete.")
+            self.log.info("Fill complete.")
             self.event_times.fill_complete = self._get_now()
         except Exception:
             self.failed = True
@@ -346,7 +367,7 @@ class LN2Handler:
                 return
 
             if key == "x" or key == "X":
-                log.warning("Aborting purge/fill.")
+                self.log.warning("Aborting purge/fill.")
                 await self.abort(only_active=False)
             elif key == "enter":
                 await self.abort(only_active=True)
@@ -369,7 +390,7 @@ class LN2Handler:
 
         for valve_handler in self._valve_handlers.values():
             if valve_handler.active or not only_active:
-                tasks.append(valve_handler.finish_fill())
+                tasks.append(valve_handler.finish())
 
         await asyncio.gather(*tasks)
 

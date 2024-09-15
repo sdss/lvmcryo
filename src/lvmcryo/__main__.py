@@ -12,6 +12,7 @@ import asyncio
 import pathlib
 import signal
 from functools import wraps
+from tempfile import NamedTemporaryFile
 
 from typing import Annotated, Optional
 
@@ -103,6 +104,7 @@ async def ln2(
         Option(
             "--interactive",
             "-i",
+            envvar="LVMCRYO_INTERACTIVE",
             help="Controls whether the interactive features are shown. When "
             "--interactive auto (the default), interactivity is determined "
             "based on console mode.",
@@ -111,6 +113,9 @@ async def ln2(
     no_prompt: Annotated[
         bool,
         Option(
+            "--no-prompt",
+            "-y",
+            envvar="LVMCRYO_NO_PROMPT",
             help="Does not prompt the user to finish or abort a purge/fill. "
             "Prompting is required if --fill-time or --purge-time are not provided "
             "and thermistors are not used.",
@@ -119,6 +124,7 @@ async def ln2(
     with_traceback: Annotated[
         bool,
         Option(
+            envvar="LVMCRYO_DEBUG",
             help="Show the full traceback in case of an error. If not set, only "
             "the error message is shown. The full traceback is always logged "
             "to the log file.",
@@ -223,6 +229,7 @@ async def ln2(
     notify: Annotated[
         bool,
         Option(
+            envvar="LVMCRYO_NOTIFY",
             help="Sends a notification when the action is completed. "
             "In not set, --slack and --email are ignored. "
             "Notifications are not sent for the [green]abort[/] "
@@ -279,6 +286,7 @@ async def ln2(
         Option(
             "--write-log",
             "-S",
+            envvar="LVMCRYO_WRITE_LOG",
             help="Saves the log to a file.",
             rich_help_panel="Logging",
         ),
@@ -296,14 +304,15 @@ async def ln2(
         bool,
         Option(
             help="Saves the log in JSON format. Uses the same path as the file log."
-            "Ignored if --write-log is not set.",
+            "Ignored if --write-log is not passed.",
             rich_help_panel="Logging",
         ),
-    ] = False,
+    ] = True,
     write_data: Annotated[
         bool,
         Option(
             "--write-data",
+            envvar="LVMCRYO_WRITE_DATA",
             help="Saves cryostat pressures and temperatures taken during purge/fill "
             "to a parquet file.",
             rich_help_panel="Logging",
@@ -339,9 +348,13 @@ async def ln2(
 
     from logging import FileHandler
 
+    from rich.prompt import Confirm
+
     from sdsstools.logger import CustomJsonFormatter, get_logger
 
+    from lvmcryo.handlers.ln2 import LN2Handler
     from lvmcryo.notifier import Notifier
+    from lvmcryo.runner import ln2_runner
     from lvmcryo.tools import LockExistsError, ensure_lock
 
     if action == Actions.abort:
@@ -402,38 +415,102 @@ async def ln2(
             jsonHandler.setLevel(5)
             jsonHandler.setFormatter(CustomJsonFormatter())
             log.addHandler(jsonHandler)
+    elif config.notify:
+        # If notifying, start a file logger, but to a temporary location. This is
+        # just to be able to send the log body in a notification email.
+        temp_file = NamedTemporaryFile()
+        log.start_file_logger(temp_file.name)
 
     if verbose:
         log.sh.setLevel(5)
     if quiet:
         log.sh.setLevel(30)
 
-    # Always create a notifier. If the entielement is disabled the
-    # notifer won't do anything. This simplifies the code.
-    notifier = Notifier.from_config(config.internal_config)
+    # Always create a notifier. If the element is disabled the
+    # notifier won't do anything. This simplifies the code.
+    notifier = Notifier(config.internal_config)
     notifier.disabled = not config.notify
     notifier.slack_disabled = not config.slack
     notifier.email_disabled = not config.email
 
+    if not config.notify:
+        log.debug("Notifications are disabled and will not be emitted.")
+
+    if not config.no_prompt:
+        info_console.print(f"Action {config.action.value} will run with:")
+        info_console.print(config.model_dump())
+        if not Confirm.ask(
+            "Continue with this configuration?",
+            default=False,
+            show_default=True,
+            console=info_console,
+        ):
+            return typer.Exit(0)
+
+    # Create the LN2 handler.
+    handler = LN2Handler(
+        config.cameras,
+        interactive=config.interactive == "yes",
+        log=log,
+        valve_info=config.valves,
+    )
+
     try:
         with ensure_lock(LOCKFILE):
-            pass
+            # Run worker.
+            await ln2_runner(handler, config, notifier)
+
+            # Check handler status.
+            if handler.failed:
+                raise RuntimeError(
+                    "No exceptions were raised but the LN2 "
+                    "handler reports a failure."
+                )
+
     except LockExistsError:
         err_console.print(
             "[red]Lock file already exists.[/] Another instance may be "
             "performing an operation. Use [green]lvmcryo ln2 clear-lock[/] to remove "
             "the lock."
         )
-        return typer.Exit(1)
-    except Exception as err:
-        if with_traceback:
-            raise
 
+        if notify:
+            log.warning("Sending failure notifications.")
+            await notifier.notify_failure(
+                f"LN2 {action.value} failed because a lockfile was already present."
+            )
+
+        return typer.Exit(1)
+
+    except Exception as err:
         err_console.print(f"[red]Error found during {action.value}:[/] {err}")
 
         log.sh.setLevel(1000)  # Log the traceback to file but do not print.
         log.exception(f"Error during {action.value}.", exc_info=err)
+
+        if notify:
+            log.warning("Sending failure notifications.")
+            await notifier.notify_failure(err, handler)
+
+        if with_traceback:
+            raise
+
         return typer.Exit(1)
+
+    else:
+        log.info(f"LN2 {action.value} completed successfully.")
+
+        if notify and config.email_level == NotificationLevel.info:
+            # The handler has already emitted a notification to Slack so just
+            # send an email.
+            # TODO: include log and more data here. For now it's just plain text.
+            log.debug("Sending notification email.")
+            notifier.send_email(
+                message="The LN2 fill completed successfully.",
+                subject="SUCCESS: LVM LN2 fill",
+            )
+
+    return typer.Exit(0)
 
 
 async def _close_valves_helper():

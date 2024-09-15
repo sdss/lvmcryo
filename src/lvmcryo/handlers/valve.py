@@ -9,24 +9,24 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
+import logging
+from dataclasses import dataclass, field
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from pydantic import model_validator
-from pydantic.dataclasses import dataclass
 from rich.progress import TaskID
 
-from lvmcryo import config, log
+from lvmcryo.handlers.thermistor import ThermistorHandler
 from lvmcryo.tools import (
-    TimerProgressBar,
     cancel_nps_threads,
     cancel_task,
+    get_fake_logger,
     valve_on_off,
 )
 
 
-PROGRESS_BAR = TimerProgressBar(console=log.rich_console)
+if TYPE_CHECKING:
+    from lvmcryo.tools import TimerProgressBar
 
 
 @dataclass
@@ -39,39 +39,25 @@ class ValveHandler:
         The name of the valve. Additional information such as thermistor channel,
         actor names, etc. are determined from the configuration file if not
         explicitely provided.
-    thermistor_channel
-        The channel of the thermistor associated with the valve.
-    nps_actor
+    actor
         The NPS actor that command the valve.
-    show_progress_bar
-        Whether to show a progress bar during fills.
+    outlet
+        The outlet name of the valve in the actor.
+    thermistor_channel
+        The channel name of the thermistor connected to the valve.
+    progress_bar
+        Progress bar instance used to display progress.
 
     """
 
     valve: str
-    thermistor_channel: Optional[str] = dataclasses.field(default=None, repr=False)
-    nps_actor: Optional[str] = dataclasses.field(default=None, repr=False)
-    show_progress_bar: Optional[bool] = dataclasses.field(default=True, repr=False)
-
-    @model_validator(mode="after")
-    def validate_fields(self):
-        if self.valve not in config["valves"]:
-            raise ValueError(f"Unknown valve {self.valve!r}.")
-
-        if self.thermistor_channel is None:
-            thermistor_key = f"valves.{self.valve}.thermistor"
-            self.thermistor_channel = config.get(thermistor_key, self.valve)
-
-        if self.nps_actor is None:
-            self.nps_actor = config.get(f"valves.{self.valve}.actor")
-            if self.nps_actor is None:
-                raise ValueError(f"Cannot find NPS actor for valve {self.valve!r}.")
-
-        return self
+    actor: str
+    outlet: str
+    thermistor_channel: str | None = None
+    progress_bar: Optional[TimerProgressBar] = None
+    log: logging.Logger = field(default_factory=get_fake_logger)
 
     def __post_init__(self):
-        from lvmcryo.handlers.thermistor import ThermistorHandler
-
         self.thermistor = ThermistorHandler(self)
 
         self._thread_id: int | None = None
@@ -112,13 +98,18 @@ class ValveHandler:
             else:
                 timeout = 600
 
+            self.log.warning(
+                f"No timeout provided for valve {self.valve!r}. "
+                f"Using default of {timeout} seconds."
+            )
+
         await self._set_state(True, timeout=timeout, use_script=True)
 
         if use_thermistor:
             self.thermistor.min_open_time = min_open_time
             self._monitor_task = asyncio.create_task(self.thermistor.start_monitoring())
 
-        if self.show_progress_bar:
+        if self.progress_bar:
             if self.valve.lower() == "purge":
                 initial_description = "Purge in progress ..."
                 complete_description = "Purge complete"
@@ -126,7 +117,7 @@ class ValveHandler:
                 initial_description = "Fill in progress ..."
                 complete_description = "Fill complete"
 
-            self._progress_bar_id = await PROGRESS_BAR.add_timer(
+            self._progress_bar_id = await self.progress_bar.add_timer(
                 timeout,
                 label=self.valve,
                 initial_description=initial_description,
@@ -145,27 +136,24 @@ class ValveHandler:
         """Schedules a task to cancel the fill after a timeout."""
 
         await asyncio.sleep(timeout)
-        await self.finish_fill()
+        await self.finish()
 
-    async def finish_fill(self):
+    async def finish(self):
         """Finishes the fill, closing the valve."""
 
         await self._set_state(False)
 
-        await cancel_task(self._monitor_task)
-        self._monitor_task = None
+        self._monitor_task = await cancel_task(self._monitor_task)
+        self._timeout_task = await cancel_task(self._timeout_task)
 
-        if self._progress_bar_id is not None:
-            await PROGRESS_BAR.stop_timer(self._progress_bar_id)
+        if self._progress_bar_id is not None and self.progress_bar is not None:
+            await self.progress_bar.stop_timer(self._progress_bar_id)
             self._progress_bar_id = None
 
-            await cancel_task(self._timeout_task)
-            self._timeout_task = None
+        self.active = False
 
         if not self.event.is_set():
             self.event.set()
-
-        self.active = False
 
     async def _set_state(
         self,
@@ -187,13 +175,14 @@ class ValveHandler:
 
         """
 
-        assert self.nps_actor is not None
+        assert self.actor is not None
 
         # If there's already a thread running for this valve, we cancel it.
         if self._thread_id is not None:
-            await cancel_nps_threads(self.nps_actor, self._thread_id)
+            await cancel_nps_threads(self.actor, self._thread_id)
 
         thread_id = await valve_on_off(
+            self.actor,
             self.valve,
             on,
             timeout=timeout,
@@ -205,9 +194,9 @@ class ValveHandler:
 
         if on:
             if thread_id is not None:
-                log.debug(
+                self.log.info(
                     f"Valve {self.valve!r} was opened with timeout={timeout} "
                     f"(thread_id={thread_id})."
                 )
         else:
-            log.debug(f"Valve {self.valve!r} was closed.")
+            self.log.info(f"Valve {self.valve!r} was closed.")

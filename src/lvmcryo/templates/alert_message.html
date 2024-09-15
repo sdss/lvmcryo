@@ -6,17 +6,17 @@
     </head>
 
     <body style="font-size: 14px">
-        <h1>An alert occurred during an LVM LN2 fill</h1>
+        <h1>An alert was raised during an LVM LN2 fill</h1>
 
         {% if error %}
-            <div style="padding: 5px 0px">Error message was:</div>
+            <div style="padding: 5px 0px">The error message was:</div>
             <div style="padding: 5px 20px">{{ error }}</div>
         {% else %}
             <div style="padding: 5px 0px">No error message was provided.</div>
         {% endif %}
 
         <div style="padding: 5px 0px">
-            At your earliest convenience, please check the status of the LVM spectrograph system. A complete summary of the fill can be found <a href="{{ fill_url }}">here</a> and you can access Grafana plots <a href="https://lvm-grafana.lco.cl">here</a>.
+            At your earliest convenience please check the status of the LVM spectrograph system. You can access Grafana plots <a href="https://lvm-grafana.lco.cl">here</a>.
         </div>
 
         <div style="padding: 5px 20px">

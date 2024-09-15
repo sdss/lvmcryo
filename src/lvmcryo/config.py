@@ -52,6 +52,7 @@ class ValveConfig(BaseModel):
 
     actor: str
     outlet: str
+    thermistor: str | None = None
 
 
 ExcludedField = Field(repr=False, exclude=True)
@@ -207,8 +208,12 @@ class Config(BaseModel):
     def validate_after(self) -> Self:
         """Performs validations after the fields have been set."""
 
+        # At this point we should have narrowed down the interactive mode.
+        if self.interactive not in [InteractiveMode.yes, InteractiveMode.no]:
+            raise ValueError("Invalid interactive mode after validation.")
+
         # If we are not in interactive mode, we set no_prompt to True.
-        if self.interactive is False:
+        if self.interactive == InteractiveMode.no:
             self.no_prompt = True
 
         defaults = self._internal_config.get("defaults", {})
@@ -243,6 +248,10 @@ class Config(BaseModel):
                     self.data_path = pathlib.Path(
                         default_path.format(timestamp=self._log_basename("parquet"))
                     )
+
+        # We won't write a JSON file if we are not writing a normal log.
+        if not self.write_log:
+            self.write_json = False
 
         # We cannot purge/fill without thermistors and without fill and purge times
         # unless we are in interactive mode.
