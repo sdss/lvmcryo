@@ -16,17 +16,17 @@ defaults:
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
 
 notifications:
-  slack_route: http://localhost:8888/slack/message
+  slack_route: http://lvm-hub.lco.cl:8080/api/slack/message
   slack_channels:
     info: lvm-notifications
     error: lvm-alerts
   slack_mentions:
     error: '@here'
   email_recipients:
-    - albireox@gmail.com
+    - lvm-critical@sdss.org
   email_server: smtp-01.lco.cl
   email_from: 'LVM LN2 system <lvm-ln2@lco.cl>'
-  email_reply_to: 'gallegoj@uw.edu'
+  email_reply_to: 'lvm-inst@sdss.org'
 
 valves:
   r1:
