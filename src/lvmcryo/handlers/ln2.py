@@ -140,47 +140,49 @@ class LN2Handler:
 
         """
 
-        self.log.info("Checking pressure and temperature ...")
+        if max_temperature is not None:
+            self.log.info("Checking LN2 temperatures ...")
+            try:
+                spec_temperatures = await spectrograph_temperatures()
+            except Exception as err:
+                raise RuntimeError(f"Failed reading spectrograph temperatures: {err}")
+            else:
+                for camera in self.cameras:
+                    ln2_temp = spec_temperatures[f"{camera}_ln2"]
 
-        try:
-            spec_temperatures = await spectrograph_temperatures()
-        except Exception as err:
-            raise RuntimeError(f"Failed reading spectrograph temperatures: {err}")
-        else:
-            for camera in self.cameras:
-                ln2_temp = spec_temperatures[f"{camera}_ln2"]
+                    if ln2_temp is None:
+                        self.failed = True
+                        raise RuntimeError(f"Failed retrieving {camera!r} temperature.")
 
-                if ln2_temp is None:
-                    self.failed = True
-                    raise RuntimeError(f"Failed retrieving {camera!r} LN2 temperature.")
+                    if ln2_temp > max_temperature:
+                        self.failed = True
+                        raise RuntimeError(
+                            f"LN2 temperature for camera {camera} is {ln2_temp:.1f} C "
+                            f"which is above the maximum allowed temperature "
+                            f"({max_temperature:.1f} C)."
+                        )
 
-                if max_temperature is not None and ln2_temp > max_temperature:
-                    self.failed = True
-                    raise RuntimeError(
-                        f"LN2 temperature for camera {camera} is {ln2_temp:.1f} C "
-                        f"which is above the maximum allowed temperature "
-                        f"({max_temperature:.1f} C)."
-                    )
+        if max_pressure is not None:
+            self.log.info("Checking pressures ...")
+            try:
+                spec_pressures = await spectrograph_pressures()
+            except Exception as err:
+                raise RuntimeError(f"Failed reading spectrograph pressures: {err}")
+            else:
+                for camera in self.cameras:
+                    pressure = spec_pressures[camera]
 
-        try:
-            spec_pressures = await spectrograph_pressures()
-        except Exception as err:
-            raise RuntimeError(f"Failed reading spectrograph pressures: {err}")
-        else:
-            for camera in self.cameras:
-                pressure = spec_pressures[camera]
+                    if pressure is None:
+                        self.failed = True
+                        raise RuntimeError(f"Failed retrieving {camera!r} pressure.")
 
-                if pressure is None:
-                    self.failed = True
-                    raise RuntimeError(f"Failed retrieving {camera!r} pressure.")
-
-                if max_pressure is not None and pressure > max_pressure:
-                    self.failed = True
-                    raise RuntimeError(
-                        f"Pressure for camera {camera} is {pressure} Torr "
-                        f"which is above the maximum allowed pressure "
-                        f"({max_pressure} Torr)."
-                    )
+                    if pressure > max_pressure:
+                        self.failed = True
+                        raise RuntimeError(
+                            f"Pressure for camera {camera} is {pressure} Torr "
+                            f"which is above the maximum allowed pressure "
+                            f"({max_pressure} Torr)."
+                        )
 
         if check_thermistors:
             self.log.info("Checking thermistors ...")
@@ -200,7 +202,7 @@ class LN2Handler:
                     self.failed = True
                     raise RuntimeError(f"Thermistor for valve {valve} is active.")
 
-        self.log.info("All checks passed.")
+        self.log.info("All pre-fill checks passed.")
 
         return True
 
@@ -281,7 +283,7 @@ class LN2Handler:
         self,
         cameras: list[str] | None = None,
         use_thermistors: bool = True,
-        min_fill_time: float|None=None,
+        min_fill_time: float | None = None,
         max_fill_time: float | None = None,
         prompt: bool | None = None,
         dry_run: bool = False,

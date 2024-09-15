@@ -75,9 +75,11 @@ async def ln2_runner(
             f"fill_time={config.fill_time}."
         )
 
+    max_temperature = config.max_temperature if config.check_temperatures else None
+    max_pressure = config.max_pressure if config.check_pressures else None
     await handler.check(
-        max_pressure=config.max_pressure,
-        max_temperature=config.max_temperature,
+        max_pressure=max_pressure,
+        max_temperature=max_temperature,
         check_thermistors=config.use_thermistors,
     )
 
@@ -89,7 +91,7 @@ async def ln2_runner(
         )
 
     if not config.dry_run:
-        log.info("Closing all valves before purging/filling.")
+        log.info(f"Closing all valves before {action}.")
         await close_all_valves()
 
     if config.action == Actions.purge_fill or config.action == Actions.purge:
