@@ -17,123 +17,13 @@ from contextlib import suppress
 from functools import partial
 from logging import getLogger
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
 
-from lvmopstools.clu import CluClient
-
-from lvmcryo.config import get_internal_config
-
-
-if TYPE_CHECKING:
-    from sdsstools.configuration import Configuration
-
-
-async def outlet_info(actor: str, outlet: str) -> dict[str, Any]:
-    """Retrieves outlet information from the NPS."""
-
-    async with CluClient() as client:
-        cmd = await client.send_command(actor, f"status {outlet}")
-        if cmd.status.did_fail:
-            raise RuntimeError(f"Command '{actor} status {outlet}' failed.")
-
-    return cmd.replies.get("outlet_info")
-
-
-async def valve_on_off(
-    actor: str,
-    outlet_name: str,
-    on: bool,
-    timeout: float | None = None,
-    use_script: bool = True,
-) -> int | None:
-    """Turns a valve on/off.
-
-    Parameters
-    ----------
-    actor
-        The NPS actor that commands the valve.
-    outlet_name
-        The name of the outlet to which the valve is connected.
-    on
-        Whether to turn the valve on or off.
-    timeout
-        Time, in seconds, after which the valve will be turned off.
-    use_script
-        If ``timeout`` is defined, the user script ``cycle_with_timeout``
-        (must be defined in the NPS) to set a timeout after which the valve
-        will be turned off. With ``use_script=False``, a ``timeout`` will
-        block until the timeout is reached.
-
-    Returns
-    -------
-    thread_id
-        If ``use_script=True``, the thread number of the user script that
-        was started. Otherwise `None`.
-
-    """
-
-    is_script: bool = False
-
-    if on is True and isinstance(timeout, (int, float)) and use_script is True:
-        # First we need to get the outlet number.
-        info = await outlet_info(actor, outlet_name)
-        id_ = info["id"]
-
-        command_string = f"scripts run cycle_with_timeout {id_} {timeout}"
-        is_script = True
-
-    else:
-        if on is False or timeout is None:
-            command_string = f"{'on' if on else 'off'} {outlet_name}"
-        else:
-            command_string = f"on --off-after {timeout} {outlet_name}"
-
-    async with CluClient() as client:
-        command = await client.send_command(actor, command_string)
-        if command.status.did_fail:
-            raise RuntimeError(f"Command '{actor} {command_string}' failed")
-
-    if is_script:
-        script_data = command.replies.get("script")
-        return script_data["thread_id"]
-
-    return
-
-
-async def cancel_nps_threads(actor: str, thread_id: int | None = None):
-    """Cancels a script thread in an NPS.
-
-    Parameters
-    ----------
-    actor
-        The name of the NPS actor to command.
-    thread_id
-        The thread ID to cancel. If `None`, all threads in the NPS will be cancelled.
-
-    """
-
-    command_string = f"scripts stop {thread_id if thread_id else ''}"
-
-    async with CluClient() as client:
-        await client.send_command(actor, command_string)
-
-
-async def close_all_valves(config: Configuration | None = None):
-    """Closes all the outlets."""
-
-    config = config or get_internal_config()
-    valve_info = config["valves"]
-
-    await asyncio.gather(
-        *[
-            valve_on_off(valve_info["actor"], valve_info["outlet"], False)
-            for valve in valve_info
-        ]
-    )
+from sdsstools.utils import run_in_executor
 
 
 def is_container():
@@ -156,9 +46,10 @@ class TimerProgressBar:
             BarColumn(bar_width=None),
             MofNCompleteColumn(),
             TextColumn("s"),
+            refresh_per_second=1,
             expand=True,
             transient=False,
-            auto_refresh=True,
+            auto_refresh=False,
             console=console,  # Need to use same console as logger.
         )
         self.console = self.progress.console
@@ -191,6 +82,7 @@ class TimerProgressBar:
                     break
 
                 self.progress.update(task_id, advance=1, visible=True)
+                asyncio.create_task(run_in_executor(self.progress.refresh))
 
                 await asyncio.sleep(1)
                 elapsed += 1
@@ -243,6 +135,12 @@ class TimerProgressBar:
             self.progress.update(task_id, visible=False)
 
         await asyncio.sleep(1)  # Extra time for renders.
+
+    def close(self):
+        """Closes the progress bar."""
+
+        self.progress.console.clear_live()
+        self.progress.stop()
 
 
 async def cancel_task(task: asyncio.Future | None):

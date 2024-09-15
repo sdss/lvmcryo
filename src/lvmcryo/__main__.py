@@ -357,14 +357,21 @@ async def ln2(
     from lvmcryo.runner import ln2_runner
     from lvmcryo.tools import LockExistsError, ensure_lock
 
+    # Create log here and use its console for stdout.
+    log = get_logger("lvmcryo", use_rich_handler=True)
+    log.setLevel(5)
+
+    stdout_console = log.rich_console
+    assert stdout_console is not None
+
     if action == Actions.abort:
         return await _close_valves_helper()
     elif action == Actions.clear_lock:
         if LOCKFILE.exists():
             LOCKFILE.unlink()
-            info_console.print("[green]Lock file removed.[/]")
+            stdout_console.print("[green]Lock file removed.[/]")
         else:
-            info_console.print("[yellow]No lock file found.[/]")
+            stdout_console.print("[yellow]No lock file found.[/]")
         return
 
     try:
@@ -403,10 +410,6 @@ async def ln2(
         err_console.print(f"[red]Error parsing configuration:[/] {err}")
         return typer.Exit(1)
 
-    log = get_logger("lvmcryo", use_rich_handler=True)
-    log.setLevel(5)
-    log.rich_console = info_console
-
     if config.write_log and config.log_path:
         log.start_file_logger(str(config.log_path))
 
@@ -437,13 +440,13 @@ async def ln2(
         log.debug("Notifications are disabled and will not be emitted.")
 
     if not config.no_prompt:
-        info_console.print(f"Action {config.action.value} will run with:")
-        info_console.print(config.model_dump())
+        stdout_console.print(f"Action {config.action.value} will run with:")
+        stdout_console.print(config.model_dump())
         if not Confirm.ask(
             "Continue with this configuration?",
             default=False,
             show_default=True,
-            console=info_console,
+            console=stdout_console,
         ):
             return typer.Exit(0)
 
@@ -453,6 +456,7 @@ async def ln2(
         interactive=config.interactive == "yes",
         log=log,
         valve_info=config.valves,
+        dry_run=config.dry_run,
     )
 
     try:
@@ -466,6 +470,8 @@ async def ln2(
                     "No exceptions were raised but the LN2 "
                     "handler reports a failure."
                 )
+
+            log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
 
     except LockExistsError:
         err_console.print(
@@ -483,6 +489,9 @@ async def ln2(
         return typer.Exit(1)
 
     except Exception as err:
+        log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
+
+        handler.clear()  # Close here because the stderr console messes the progress bar
         err_console.print(f"[red]Error found during {action.value}:[/] {err}")
 
         log.sh.setLevel(1000)  # Log the traceback to file but do not print.
@@ -510,13 +519,16 @@ async def ln2(
                 subject="SUCCESS: LVM LN2 fill",
             )
 
+    finally:
+        handler.clear()
+
     return typer.Exit(0)
 
 
 async def _close_valves_helper():
     """Closes all the outlets."""
 
-    from lvmcryo.tools import close_all_valves
+    from lvmcryo.handlers.valve import close_all_valves
 
     try:
         await close_all_valves()

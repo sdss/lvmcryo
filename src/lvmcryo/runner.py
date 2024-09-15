@@ -11,14 +11,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-import sys
 
 from typing import TYPE_CHECKING
 
 from lvmcryo.config import Actions
-from lvmcryo.handlers import LN2Handler
+from lvmcryo.handlers import LN2Handler, close_all_valves
 from lvmcryo.notifier import Notifier
-from lvmcryo.tools import close_all_valves
 
 
 if TYPE_CHECKING:
@@ -32,10 +30,14 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     """Handles signals to close all valves and exit cleanly."""
 
     log.error("User aborted the process. Closing all valves before exiting.")
-    await handler.abort(only_active=False)
+    await handler.close_valves(only_active=False)
+    handler.clear()
 
-    log.error("All valves have been closed. Exiting.")
-    asyncio.get_running_loop().call_soon(sys.exit, 0)
+    handler.aborted = True
+    handler.event_times.aborted = handler._get_now()
+
+    handler.event_times.failed = handler._get_now()
+    handler.event_times.aborted = handler._get_now()
 
 
 async def ln2_runner(
@@ -59,6 +61,9 @@ async def ln2_runner(
     # Record options used.
     config_json = config.model_dump_json(indent=2)
     log.debug(f"Running {config.action.value} with configuration:\n{config_json}")
+
+    if config.dry_run:
+        log.warning("Running in dry-run mode. No valves will be operated.")
 
     # Inform of the start of the fill in Slack.
     now = handler._get_now()
@@ -90,9 +95,8 @@ async def ln2_runner(
             lambda: asyncio.create_task(signal_handler(handler, log)),
         )
 
-    if not config.dry_run:
-        log.info(f"Closing all valves before {action}.")
-        await close_all_valves()
+    log.info(f"Closing all valves before {action}.")
+    await close_all_valves(dry_run=config.dry_run)
 
     if config.action == Actions.purge_fill or config.action == Actions.purge:
         await notifier.post_to_slack("Starting purge.")
@@ -102,8 +106,10 @@ async def ln2_runner(
             min_purge_time=config.min_purge_time,
             max_purge_time=max_purge_time,
             prompt=not config.no_prompt,
-            dry_run=config.dry_run,
         )
+
+        if handler.failed or handler.aborted:
+            raise RuntimeError("Purge failed or was aborted.")
 
     if config.action == Actions.purge_fill or config.action == Actions.fill:
         await notifier.post_to_slack("Starting fill.")
@@ -113,9 +119,9 @@ async def ln2_runner(
             min_fill_time=config.min_fill_time,
             max_fill_time=max_fill_time,
             prompt=not config.no_prompt,
-            dry_run=config.dry_run,
         )
 
-    await notifier.post_to_slack("LN₂ {action} completed successfully.")
+        if handler.failed or handler.aborted:
+            raise RuntimeError("Fill failed or was aborted.")
 
-    handler.failed = False  # Just in case.
+    await notifier.post_to_slack(f"LN₂ {action} completed successfully.")

@@ -9,5 +9,5 @@
 from __future__ import annotations
 
 from .ln2 import LN2Handler
-# from .thermistor import ThermistorHandler
-# from .valve import ValveHandler
+from .thermistor import ThermistorHandler
+from .valve import *

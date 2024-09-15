@@ -54,9 +54,9 @@ valves:
     actor: lvmnps.sp3
     outlet: b3
   z3:
-    actor: lvmnps.calib
-    outlet: outlet_7
+    actor: lvmnps.sp3
+    outlet: z3
   purge:
-    actor: lvmnps.calib
-    outlet: outlet8
+    actor: lvmnps.sp1
+    outlet: purge
     thermistor: supply

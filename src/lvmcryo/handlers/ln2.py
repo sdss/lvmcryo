@@ -16,7 +16,12 @@ from dataclasses import dataclass, field
 from typing import Coroutine
 
 import sshkeyboard
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
+from rich import box
+from rich.align import Align
+from rich.console import Console
+from rich.markup import render
+from rich.panel import Panel
 
 from lvmopstools.devices.specs import spectrograph_pressures, spectrograph_temperatures
 from lvmopstools.devices.thermistors import read_thermistors
@@ -24,6 +29,10 @@ from lvmopstools.devices.thermistors import read_thermistors
 from lvmcryo.config import ValveConfig, get_internal_config
 from lvmcryo.handlers.valve import ValveHandler
 from lvmcryo.tools import TimerProgressBar, get_fake_logger
+
+
+def convert_datetime_to_iso_8601_with_z_suffix(dt: datetime.datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class EventDict(BaseModel):
@@ -35,6 +44,12 @@ class EventDict(BaseModel):
     fill_complete: datetime.datetime | None = None
     failed: datetime.datetime | None = None
     aborted: datetime.datetime | None = None
+
+    @field_serializer("*")
+    def serialize_dates(self, value: datetime.datetime | None) -> str | None:
+        if value is None:
+            return None
+        return convert_datetime_to_iso_8601_with_z_suffix(value)
 
 
 def get_valve_info():
@@ -64,6 +79,8 @@ class LN2Handler:
     valve_info
         A dictionary of valve name to actor and outlet name. If not provided,
         the internal configuration will be used.
+    dry_run
+        Does not actually operate the valves.
 
     """
 
@@ -72,13 +89,16 @@ class LN2Handler:
     interactive: bool = False
     log: logging.Logger = field(default_factory=get_fake_logger)
     valve_info: dict[str, ValveConfig] = field(default_factory=get_valve_info)
+    dry_run: bool = False
 
     def __post_init__(self):
         if self.interactive:
             console = getattr(self.log, "rich_console", None)
             self._progress_bar = TimerProgressBar(console)
+            self.console = self._progress_bar.console
         else:
             self._progress_bar = None
+            self.console = Console()
 
         self._valve_handlers: dict[str, ValveHandler] = {}
         for camera in self.cameras + [self.purge_valve]:
@@ -96,10 +116,13 @@ class LN2Handler:
                 thermistor_channel=thermistor,
                 progress_bar=self._progress_bar,
                 log=self.log,
+                dry_run=self.dry_run,
             )
 
         self.event_times = EventDict()
+
         self.failed: bool = False
+        self.aborted: bool = False
 
     def get_specs(self):
         """Returns a list of spectrographs being handled."""
@@ -218,7 +241,6 @@ class LN2Handler:
         min_purge_time: float | None = None,
         max_purge_time: float | None = None,
         prompt: bool | None = None,
-        dry_run: bool = False,
     ):
         """Purges the system.
 
@@ -239,9 +261,6 @@ class LN2Handler:
         prompt
             Whether to show a prompt to stop or cancel the purge. If ``None``,
             determined from the instance ``interactive`` attribute.
-        dry_run
-            If True, does not actually purge. All checks are perfomed and the
-            hardware is expected to be connected.
 
         """
 
@@ -255,29 +274,32 @@ class LN2Handler:
         self.log.info(
             f"Beginning purge using valve {valve_handler.valve!r} with "
             f"use_thermistor={use_thermistor}, min_open_time={min_purge_time}, "
-            f"timeout={max_purge_time}."
+            f"max_purge_time={max_purge_time}."
         )
 
         prompt = prompt if prompt is not None else self.interactive
         if prompt:
-            self.log.warning('Press "x" to abort or "enter" to finish the purge.')
-            self._kb_monitor()
+            self._kb_monitor(action="purge")
 
         try:
-            if dry_run is False:
-                await valve_handler.start_fill(
-                    min_open_time=min_purge_time or 0.0,
-                    timeout=max_purge_time,
-                    use_thermistor=use_thermistor,
-                )
-            self.log.info("Purge complete.")
-            self.event_times.purge_complete = self._get_now()
+            await valve_handler.start_fill(
+                min_open_time=min_purge_time or 0.0,
+                max_open_time=max_purge_time,
+                use_thermistor=use_thermistor,
+            )
+
+            if not self.aborted:
+                self.log.info("Purge complete.")
+
         except Exception:
             self.failed = True
             raise
+
         finally:
+            self.event_times.purge_complete = self._get_now()
             if prompt:
                 sshkeyboard.stop_listening()
+                await asyncio.sleep(1)
 
     async def fill(
         self,
@@ -286,7 +308,6 @@ class LN2Handler:
         min_fill_time: float | None = None,
         max_fill_time: float | None = None,
         prompt: bool | None = None,
-        dry_run: bool = False,
     ):
         """Fills the selected cameras.
 
@@ -308,9 +329,6 @@ class LN2Handler:
         prompt
             Whether to show a prompt to stop or cancel the fill. If ``None``,
             determined from the instance ``interactive`` attribute.
-        dry_run
-            If True, does not actually fill. All checks are perfomed and the
-            hardware is expected to be connected.
 
         """
 
@@ -329,7 +347,7 @@ class LN2Handler:
             fill_tasks.append(
                 valve_handler.start_fill(
                     min_open_time=min_fill_time or 0.0,
-                    timeout=max_fill_time,
+                    max_open_time=max_fill_time,
                     use_thermistor=use_thermistors,
                 )
             )
@@ -339,27 +357,30 @@ class LN2Handler:
         self.log.info(
             f"Beginning fill on cameras {cameras!r} with "
             f"use_thermistors={use_thermistors}, min_open_time={min_fill_time}, "
-            f"timeout={max_fill_time}."
+            f"max_fill_time={max_fill_time}."
         )
 
         prompt = prompt if prompt is not None else self.interactive
         if prompt:
-            self.log.warning('Press "x" to abort or "enter" to finish the purge.')
-            self._kb_monitor()
+            self._kb_monitor(action="fill")
 
         try:
-            if dry_run is False:
-                await asyncio.gather(*fill_tasks)
-            self.log.info("Fill complete.")
-            self.event_times.fill_complete = self._get_now()
+            await asyncio.gather(*fill_tasks)
+
+            if not self.aborted:
+                self.log.info("Fill complete.")
+
         except Exception:
             self.failed = True
             raise
+
         finally:
+            self.event_times.fill_complete = self._get_now()
             if prompt:
                 sshkeyboard.stop_listening()
+                await asyncio.sleep(1)
 
-    def _kb_monitor(self):
+    def _kb_monitor(self, action: str = "fill"):
         """Monitors the keyboard and cancels/aborts the fill.."""
 
         async def monitor_keys(key: str):
@@ -369,18 +390,38 @@ class LN2Handler:
                 return
 
             if key == "x" or key == "X":
-                self.log.warning("Aborting purge/fill.")
-                await self.abort(only_active=False)
+                self.log.warning("Aborting.")
+
+                await self.close_valves(only_active=False)
+
+                self.aborted = True  # Prevent any future actions.
+                self.event_times.aborted = self._get_now()
+
             elif key == "enter":
-                await self.abort(only_active=True)
+                self.log.warning("Finishing purge/fill.")
+                await self.close_valves(only_active=True)
 
             sshkeyboard.stop_listening()
+
+        self.console.print(
+            Panel(
+                Align(
+                    render(
+                        'Press [green]"x"[/] to abort or [green]"enter"[/] '
+                        f"to finish the {action}."
+                    ),
+                    "center",
+                ),
+                box=box.HEAVY,
+                border_style="red",
+            )
+        )
 
         # No need to store this task. It will be automatically done when
         # sshkeyboard.stop_listening() is called.
         asyncio.create_task(sshkeyboard.listen_keyboard_manual(on_press=monitor_keys))
 
-    async def abort(self, only_active: bool = True):
+    async def close_valves(self, only_active: bool = True):
         """Cancels ongoing fills and closes the valves.
 
         If ``only_active=True`` only active valves will be closed. Otherwise
@@ -396,4 +437,14 @@ class LN2Handler:
 
         await asyncio.gather(*tasks)
 
-        self.event_times.aborted = self._get_now()
+    def clear(self):
+        """Cleanly finishes tasks and other clean-up tasks."""
+
+        if self._progress_bar is not None:
+            self._progress_bar.close()
+
+    def fail(self):
+        """Sets the fail flag and event time."""
+
+        self.failed = True
+        self.event_times.failed = self._get_now()
