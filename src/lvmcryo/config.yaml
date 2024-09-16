@@ -28,6 +28,8 @@ notifications:
   email_from: 'LVM LN2 system <lvm-ln2@lco.cl>'
   email_reply_to: 'lvm-inst@sdss.org'
 
+alerts_route: http://lvm-hub.lco.cl:8080/api/alerts
+
 valves:
   r1:
     actor: lvmnps.sp1

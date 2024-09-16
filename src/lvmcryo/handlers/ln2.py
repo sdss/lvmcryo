@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from typing import Coroutine
 
+import httpx
 import sshkeyboard
 from pydantic import BaseModel, field_serializer
 from rich import box
@@ -81,6 +82,8 @@ class LN2Handler:
         the internal configuration will be used.
     dry_run
         Does not actually operate the valves.
+    alerts_route
+        The API route to query system alerts.
 
     """
 
@@ -90,6 +93,7 @@ class LN2Handler:
     log: logging.Logger = field(default_factory=get_fake_logger)
     valve_info: dict[str, ValveConfig] = field(default_factory=get_valve_info)
     dry_run: bool = False
+    alerts_route: str | None = "http://lvm-hub.lco.cl:8080/api/alerts"
 
     def __post_init__(self):
         if self.interactive:
@@ -118,6 +122,10 @@ class LN2Handler:
                 log=self.log,
                 dry_run=self.dry_run,
             )
+
+        self._alerts_monitor_task: asyncio.Task | None = asyncio.create_task(
+            self.monitor_alerts()
+        )
 
         self.event_times = EventDict()
 
@@ -421,6 +429,33 @@ class LN2Handler:
         # sshkeyboard.stop_listening() is called.
         asyncio.create_task(sshkeyboard.listen_keyboard_manual(on_press=monitor_keys))
 
+    async def monitor_alerts(self):
+        """Monitors the system alerts and aborts the fill if necessary."""
+
+        if not self.alerts_route:
+            self.log.warning("No alerts route provided. Not monitoring alerts.")
+            return
+
+        while True:
+            try:
+                async with httpx.AsyncClient(follow_redirects=True) as client:
+                    response = await client.get(self.alerts_route)
+
+                if response.status_code != 200:
+                    self.log.warning(f"Error reading alerts: {response.text}")
+                else:
+                    alerts = response.json()
+                    if any(alerts["o2_room_alerts"].values()):
+                        self.log.error("O2 alarm: closing valves and aborting.")
+                        await self.close_valves(only_active=False)
+                        self.abort()
+                        return
+
+            except Exception as ee:
+                self.log.warning(f"Error reading alerts: {ee}")
+
+            await asyncio.sleep(3)
+
     async def close_valves(self, only_active: bool = True):
         """Cancels ongoing fills and closes the valves.
 
@@ -448,3 +483,11 @@ class LN2Handler:
 
         self.failed = True
         self.event_times.failed = self._get_now()
+
+    def abort(self):
+        """Aborts the fill."""
+
+        self.aborted = True
+        self.event_times.aborted = self._get_now()
+
+        self.fail()

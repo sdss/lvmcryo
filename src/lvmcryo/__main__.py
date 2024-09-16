@@ -470,6 +470,7 @@ async def ln2(
         log=log,
         valve_info=config.valves,
         dry_run=config.dry_run,
+        alerts_route=config.internal_config["alerts_route"],
     )
 
     try:
