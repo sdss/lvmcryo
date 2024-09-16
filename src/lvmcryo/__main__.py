@@ -619,7 +619,7 @@ async def ion(
             if camera not in failed_cameras
         }
 
-        info_console.print(status)
+        info_console.print(status, width=80)
         return
 
     error: bool = False
