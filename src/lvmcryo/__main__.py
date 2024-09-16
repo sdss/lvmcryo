@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import pathlib
 import signal
+import warnings
 from functools import wraps
 from tempfile import NamedTemporaryFile
 
@@ -597,7 +598,27 @@ async def ion(
 
     if on is None:
         query_cameras = cameras if cameras != ["all"] else None
-        status = await read_ion_pumps(query_cameras)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            status = await read_ion_pumps(query_cameras)
+
+        failed_cameras: list[str] = []
+        for camera, data in status.items():
+            if data["on"] is None:
+                failed_cameras.append(camera)
+
+        if len(failed_cameras) > 0:
+            info_console.print(
+                "[yellow]Failed getting ion pump status for cameras:[/] "
+                f"{', '.join(failed_cameras)}"
+            )
+
+        status = {
+            camera: data
+            for camera, data in status.items()
+            if camera not in failed_cameras
+        }
+
         info_console.print(status)
         return
 
