@@ -57,7 +57,10 @@ class Notifier:
         if not config_data["notifications"]:
             raise ValidationError("Configuration does not have notifications section.")
 
-        self.config = NotifierConfig(**config_data["notifications"])
+        self.config = NotifierConfig(
+            slack_route=config_data["api_routes"]["slack"],
+            **config_data["notifications"],
+        )
 
         self.disabled: bool = False
         self.slack_disabled: bool = False

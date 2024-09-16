@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import pathlib
 import signal
 import warnings
@@ -23,6 +24,7 @@ from typer import Argument, Option
 from typer.core import TyperGroup
 
 from lvmcryo.config import Actions, Config, InteractiveMode, NotificationLevel
+from lvmcryo.runner import post_fill_tasks
 
 
 LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
@@ -349,7 +351,7 @@ async def ln2(
             "data collection has finished.",
             rich_help_panel="Logging",
         ),
-    ] = 0,
+    ] = 30,
 ):
     """Handles LN2 purges and fills.
 
@@ -377,6 +379,13 @@ async def ln2(
 
     stdout_console = log.rich_console
     assert stdout_console is not None
+
+    error: Exception | str | None = None
+    skip_finally: bool = False
+
+    json_path: pathlib.Path | None = None
+    json_handler: FileHandler | None = None
+    log_data: list[dict] | None = None
 
     if action == Actions.abort:
         return await _close_valves_helper()
@@ -428,10 +437,11 @@ async def ln2(
         log.start_file_logger(str(config.log_path))
 
         if write_json:
-            jsonHandler = FileHandler(config.log_path.with_suffix(".json"), mode="w")
-            jsonHandler.setLevel(5)
-            jsonHandler.setFormatter(CustomJsonFormatter())
-            log.addHandler(jsonHandler)
+            json_path = config.log_path.with_suffix(".json")
+            json_handler = FileHandler(str(json_path), mode="w")
+            json_handler.setLevel(5)
+            json_handler.setFormatter(CustomJsonFormatter())
+            log.addHandler(json_handler)
     elif config.notify:
         # If notifying, start a file logger, but to a temporary location. This is
         # just to be able to send the log body in a notification email.
@@ -471,7 +481,7 @@ async def ln2(
         log=log,
         valve_info=config.valves,
         dry_run=config.dry_run,
-        alerts_route=config.internal_config["alerts_route"],
+        alerts_route=config.internal_config["api_routes"]["alerts"],
     )
 
     try:
@@ -486,8 +496,6 @@ async def ln2(
                     "handler reports a failure."
                 )
 
-            log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
-
     except LockExistsError:
         err_console.print(
             "[red]Lock file already exists.[/] Another instance may be "
@@ -500,6 +508,9 @@ async def ln2(
             await notifier.notify_failure(
                 f"LN2 {action.value} failed because a lockfile was already present."
             )
+
+        # Do not do anything special for this error, just exit.
+        skip_finally = True
 
         return typer.Exit(1)
 
@@ -515,30 +526,63 @@ async def ln2(
         log.sh.setLevel(1000)  # Log the traceback to file but do not print.
         log.exception(f"Error during {action.value}.", exc_info=err)
 
-        if notify:
-            log.warning("Sending failure notifications.")
-            await notifier.notify_failure(err, handler)
-
+        error = err
         if with_traceback:
             raise
 
         return typer.Exit(1)
 
     else:
+        log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
         log.info(f"LN2 {action.value} completed successfully.")
-
-        if notify and config.email_level == NotificationLevel.info:
-            # The handler has already emitted a notification to Slack so just
-            # send an email.
-            # TODO: include log and more data here. For now it's just plain text.
-            log.debug("Sending notification email.")
-            notifier.send_email(
-                message="The LN2 fill completed successfully.",
-                subject="SUCCESS: LVM LN2 fill",
-            )
 
     finally:
         await handler.clear()
+
+        if not skip_finally:
+            if json_handler and json_path:
+                json_handler.flush()
+                with json_path.open("r") as ff:
+                    log_data = [json.loads(line) for line in ff.readlines()]
+
+            record_pk = await post_fill_tasks(
+                handler,
+                write_data=config.write_data,
+                data_path=config.data_path,
+                data_extra_time=config.data_extra_time,
+                api_data_route=config.internal_config["api_routes"]["fill_data"],
+                write_to_db=True,
+                api_db_route=config.internal_config["api_routes"]["register_fill"],
+                db_extra_payload={
+                    "error": error,
+                    "action": action.value,
+                    "log_file": str(config.log_path) if config.log_path else None,
+                    "json_file": str(json_path) if json_path else None,
+                    "log_data": log_data,
+                    "configuration": config.model_dump(),
+                },
+            )
+
+            if record_pk:
+                log.debug(f"Record {record_pk} created in the database.")
+
+            if notify:
+                if error:
+                    log.warning("Sending failure notifications.")
+                    await notifier.notify_failure(error, handler)
+
+                elif config.email_level == NotificationLevel.info:
+                    # The handler has already emitted a notification to
+                    # Slack so just send an email.
+
+                    # TODO: include log and more data here.
+                    # For now it's just plain text.
+
+                    log.debug("Sending notification email.")
+                    notifier.send_email(
+                        message="The LN2 fill completed successfully.",
+                        subject="SUCCESS: LVM LN2 fill",
+                    )
 
     return typer.Exit(0)
 

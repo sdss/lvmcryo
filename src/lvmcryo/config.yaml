@@ -16,7 +16,6 @@ defaults:
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
 
 notifications:
-  slack_route: http://lvm-hub.lco.cl:8080/api/slack/message
   slack_channels:
     info: lvm-notifications
     error: lvm-alerts
@@ -28,7 +27,11 @@ notifications:
   email_from: 'LVM LN2 system <lvm-ln2@lco.cl>'
   email_reply_to: 'lvm-inst@sdss.org'
 
-alerts_route: http://lvm-hub.lco.cl:8080/api/alerts
+api_routes:
+  slack: http://lvm-hub.lco.cl:8080/api/slack/message
+  alerts: http://lvm-hub.lco.cl:8080/api/alerts
+  fill_data: http://lvm-hub.lco.cl:8080/api/spectrographs/fills/measurements
+  register_fill: http://lvm-hub.lco.cl:8080/api/spectrographs/fills/register
 
 valves:
   r1:
