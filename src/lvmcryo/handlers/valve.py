@@ -106,8 +106,6 @@ async def valve_on_off(
         return 0 if is_script else None
 
     async with CluClient() as client:
-        print("here")
-        return
         command = await client.send_command(actor, command_string)
         if command.status.did_fail:
             raise RuntimeError(f"Command '{actor} {command_string}' failed")
