@@ -91,13 +91,17 @@ async def ln2(
         Option(
             dir_okay=False,
             exists=True,
+            envvar="LVMCRYO_CONFIG_FILE",
             help="The configuration file to use to set the default values. "
             "Defaults to the internal configuration file.",
         ),
     ] = None,
     dry_run: Annotated[
         bool,
-        Option(help="Test run the code but do not actually open/close any valves."),
+        Option(
+            "--dry-run",
+            help="Test run the code but do not actually open/close any valves.",
+        ),
     ] = False,
     interactive: Annotated[
         InteractiveMode,
@@ -124,6 +128,7 @@ async def ln2(
     with_traceback: Annotated[
         bool,
         Option(
+            "--with-traceback",
             envvar="LVMCRYO_DEBUG",
             help="Show the full traceback in case of an error. If not set, only "
             "the error message is shown. The full traceback is always logged "
@@ -137,6 +142,7 @@ async def ln2(
     use_thermistors: Annotated[
         bool,
         Option(
+            " /--no-use-thermistors",
             help="Use thermistor values to determine purge/fill time.",
             rich_help_panel="Purge and fill options",
         ),
@@ -144,6 +150,7 @@ async def ln2(
     check_pressures: Annotated[
         bool,
         Option(
+            " /--no-check-pressures",
             help="Aborts purge/fill if the pressure of any cryostat "
             "is above the limit.",
             rich_help_panel="Purge and fill options",
@@ -152,6 +159,7 @@ async def ln2(
     check_temperatures: Annotated[
         bool,
         Option(
+            " /--no-check-temperatures",
             help="Aborts purge/fill if the temperature of a fill cryostat "
             "is above the limit.",
             rich_help_panel="Purge and fill options",
@@ -229,6 +237,7 @@ async def ln2(
     notify: Annotated[
         bool,
         Option(
+            "--notify",
             envvar="LVMCRYO_NOTIFY",
             help="Sends a notification when the action is completed. "
             "In not set, --slack and --email are ignored. "
@@ -255,6 +264,7 @@ async def ln2(
     email_level: Annotated[
         NotificationLevel,
         Option(
+            envvar="LVMCRYO_EMAIL_LEVEL",
             help="Send an email notification only on error or always.",
             case_sensitive=False,
             rich_help_panel="Notifications",
@@ -303,6 +313,8 @@ async def ln2(
     write_json: Annotated[
         bool,
         Option(
+            "--write-json",
+            envvar="LVMCRYO_WRITE_JSON",
             help="Saves the log in JSON format. Uses the same path as the file log."
             "Ignored if --write-log is not passed.",
             rich_help_panel="Logging",
