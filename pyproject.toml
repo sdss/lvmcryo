@@ -14,10 +14,8 @@ dependencies = [
     "sdss-clu>=2.2.7",
     "rich>=13.4.2",
     "httpx>=0.27.0",
-    "asyncudp>=0.11.0",
     "pydantic>=2.9.1",
     "jinja2>=3.1.2",
-    "sdss-drift>=1.2.0",
     "sshkeyboard>=2.3.1",
     "lvmopstools>=0.3.7",
     "typer>=0.12.5",
@@ -26,23 +24,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/sdss/lvmcryo"
 Repository = "https://github.com/sdss/lvmcryo"
-Documentation = "https://lvmcryo.readthedocs.org"
 
 [project.scripts]
 lvmcryo = "lvmcryo.__main__:cli"
-
-[project.optional-dependencies]
-docs = [
-    "sphinx>=4.3.0",
-    "sphinx>=8.0.0",
-    "furo>=2024.8.6",
-    "sphinx-copybutton>=0.4.0",
-    "sphinx-jsonschema>=1.16.11",
-    "myst-parser>=2.0.0",
-    "nox>=2021.6.12",
-    "sphinx-autobuild>=2021.3.14",
-    "sphinx-autodoc-typehints>=1.23.2"
-]
 
 [tool.uv]
 package = true
