@@ -81,7 +81,8 @@ async def ln2(
         list[str] | None,
         Argument(
             help="Comma-separated cameras to fill. Defaults to all cameras. "
-            "Ignored for [green]purge[/], [green]abort[/] and [green]clear[/].",
+            "Ignored for [green]purge[/], [green]abort[/] and [green]clear[/]. "
+            "When supplied, ACTION needs to be explicitely defined.",
         ),
     ] = None,
     #
