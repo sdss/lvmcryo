@@ -31,7 +31,7 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
 
     log.error("User aborted the process. Closing all valves before exiting.")
     await handler.close_valves(only_active=False)
-    handler.clear()
+    await handler.clear()
 
     handler.aborted = True
     handler.event_times.aborted = handler._get_now()
@@ -98,6 +98,10 @@ async def ln2_runner(
     log.info(f"Closing all valves before {action}.")
     await close_all_valves(dry_run=config.dry_run)
 
+    if handler.failed or handler.aborted:
+        await handler.clear()
+        raise RuntimeError("The LN2 handler was aborted before starting the fill.")
+
     if config.action == Actions.purge_fill or config.action == Actions.purge:
         await notifier.post_to_slack("Starting purge.")
         max_purge_time = config.purge_time or config.max_purge_time
@@ -109,6 +113,7 @@ async def ln2_runner(
         )
 
         if handler.failed or handler.aborted:
+            await handler.clear()
             raise RuntimeError("Purge failed or was aborted.")
 
     if config.action == Actions.purge_fill or config.action == Actions.fill:
@@ -122,6 +127,8 @@ async def ln2_runner(
         )
 
         if handler.failed or handler.aborted:
+            await handler.clear()
             raise RuntimeError("Fill failed or was aborted.")
 
     await notifier.post_to_slack(f"LN₂ {action} completed successfully.")
+    await handler.clear()

@@ -505,7 +505,10 @@ async def ln2(
     except Exception as err:
         log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
 
-        handler.clear()  # Close here because the stderr console messes the progress bar
+        # Close here because the stderr console messes the progress bar.
+        # Probably overkill since we clear it almost everywhere in case of an error.
+        await handler.clear()
+
         err_console.print(f"[red]Error found during {action.value}:[/] {err}")
 
         log.sh.setLevel(1000)  # Log the traceback to file but do not print.
@@ -534,7 +537,7 @@ async def ln2(
             )
 
     finally:
-        handler.clear()
+        await handler.clear()
 
     return typer.Exit(0)
 

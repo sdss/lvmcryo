@@ -29,7 +29,7 @@ from lvmopstools.devices.thermistors import read_thermistors
 
 from lvmcryo.config import ValveConfig, get_internal_config
 from lvmcryo.handlers.valve import ValveHandler
-from lvmcryo.tools import TimerProgressBar, get_fake_logger
+from lvmcryo.tools import TimerProgressBar, cancel_task, get_fake_logger
 
 
 def convert_datetime_to_iso_8601_with_z_suffix(dt: datetime.datetime) -> str:
@@ -182,11 +182,11 @@ class LN2Handler:
                     ln2_temp = spec_temperatures[f"{camera}_ln2"]
 
                     if ln2_temp is None:
-                        self.failed = True
+                        self.fail()
                         raise RuntimeError(f"Failed retrieving {camera!r} temperature.")
 
                     if ln2_temp > max_temperature:
-                        self.failed = True
+                        self.fail()
                         raise RuntimeError(
                             f"LN2 temperature for camera {camera} is {ln2_temp:.1f} C "
                             f"which is above the maximum allowed temperature "
@@ -204,11 +204,11 @@ class LN2Handler:
                     pressure = spec_pressures[camera]
 
                     if pressure is None:
-                        self.failed = True
+                        self.fail()
                         raise RuntimeError(f"Failed retrieving {camera!r} pressure.")
 
                     if pressure > max_pressure:
-                        self.failed = True
+                        self.fail()
                         raise RuntimeError(
                             f"Pressure for camera {camera} is {pressure} Torr "
                             f"which is above the maximum allowed pressure "
@@ -221,7 +221,7 @@ class LN2Handler:
             try:
                 thermistors = await read_thermistors()
             except Exception as err:
-                self.failed = True
+                self.fail()
                 raise RuntimeError(f"Failed reading thermistors: {err}")
 
             for valve in self._valve_handlers:
@@ -230,7 +230,7 @@ class LN2Handler:
 
                 thermistor_value = thermistors[channel]
                 if thermistor_value is True:
-                    self.failed = True
+                    self.fail()
                     raise RuntimeError(f"Thermistor for valve {valve} is active.")
 
         self.log.info("All pre-fill checks passed.")
@@ -300,7 +300,7 @@ class LN2Handler:
                 self.log.info("Purge complete.")
 
         except Exception:
-            self.failed = True
+            self.fail()
             raise
 
         finally:
@@ -379,7 +379,7 @@ class LN2Handler:
                 self.log.info("Fill complete.")
 
         except Exception:
-            self.failed = True
+            self.fail()
             raise
 
         finally:
@@ -402,8 +402,7 @@ class LN2Handler:
 
                 await self.close_valves(only_active=False)
 
-                self.aborted = True  # Prevent any future actions.
-                self.event_times.aborted = self._get_now()
+                self.abort()  # Prevent any future actions.
 
             elif key == "enter":
                 self.log.warning("Finishing purge/fill.")
@@ -472,11 +471,15 @@ class LN2Handler:
 
         await asyncio.gather(*tasks)
 
-    def clear(self):
+    async def clear(self):
         """Cleanly finishes tasks and other clean-up tasks."""
+
+        sshkeyboard.stop_listening()
 
         if self._progress_bar is not None:
             self._progress_bar.close()
+
+        self._alerts_monitor_task = await cancel_task(self._alerts_monitor_task)
 
     def fail(self):
         """Sets the fail flag and event time."""
