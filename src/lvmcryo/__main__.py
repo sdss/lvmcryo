@@ -570,7 +570,7 @@ async def ion(
             case_sensitive=False,
             show_default=False,
         ),
-    ],
+    ] = None,
     on: Annotated[
         Optional[bool],
         Option(
