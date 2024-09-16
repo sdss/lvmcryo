@@ -483,7 +483,7 @@ requires-dist = [
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2024.8.6" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = ">=3.1.2" },
-    { name = "lvmopstools", specifier = ">=0.3.6" },
+    { name = "lvmopstools", specifier = ">=0.3.7" },
     { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=2.0.0" },
     { name = "nox", marker = "extra == 'docs'", specifier = ">=2021.6.12" },
     { name = "pydantic", specifier = ">=2.9.1" },
@@ -510,7 +510,7 @@ dev = [
 
 [[package]]
 name = "lvmopstools"
-version = "0.3.6"
+version = "0.3.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asyncudp" },
@@ -518,9 +518,9 @@ dependencies = [
     { name = "sdss-drift" },
     { name = "sdsstools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/35/9b/a62826e317073eeb4d7c8b28d91ea7c0598c95ebd8889672c7948b29b86b/lvmopstools-0.3.6.tar.gz", hash = "sha256:b8e78b6ff9f49b13db1a5404a6e6a821fef69036a59766ec2785ceef9d700e98", size = 16533 }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/82/4e09c72890da198734cbb5824661c5b36282f0574e843817a1b8aed0bd20/lvmopstools-0.3.7.tar.gz", hash = "sha256:55c98dee240efea7525ffdae053d54303cab8ee0f53cbdcce6759bd082f7d91f", size = 16559 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/fb/3369042de2077c1117fc61febd87af943f57f45e88f819a3ce2bd765fc2a/lvmopstools-0.3.6-py3-none-any.whl", hash = "sha256:f6b77011c7dec4200c1ebd7f8c851c5ed4bcddc55a17f4e674270a3f7070c9ec", size = 22494 },
+    { url = "https://files.pythonhosted.org/packages/02/07/8bc9be6adfa1cdf7673d44326280dd258adc04498867cdc103e21eb96b08/lvmopstools-0.3.7-py3-none-any.whl", hash = "sha256:9b87a470073db464808b74144b71624911fa7a4c941f660a94595af825c30cf4", size = 22528 },
 ]
 
 [[package]]
