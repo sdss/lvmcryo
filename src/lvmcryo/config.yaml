@@ -24,8 +24,8 @@ notifications:
   email_recipients:
     - lvm-critical@sdss.org
   email_server: smtp-01.lco.cl
-  email_from: 'LVM LN2 system <lvm-ln2@lco.cl>'
-  email_reply_to: 'lvm-inst@sdss.org'
+  email_from: LVM LN2 system <lvm-ln2@lco.cl>
+  email_reply_to: lvm-critical@sdss.org
 
 api_routes:
   slack: http://lvm-hub.lco.cl:8080/api/slack/message
