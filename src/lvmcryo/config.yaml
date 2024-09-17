@@ -35,7 +35,7 @@ api_routes:
   fill_data: http://lvm-hub.lco.cl:8080/api/spectrographs/fills/measurements
   register_fill: http://lvm-hub.lco.cl:8080/api/spectrographs/fills/register
 
-valves:
+valve_info:
   r1:
     actor: lvmnps.sp1
     outlet: r1
@@ -66,4 +66,5 @@ valves:
   purge:
     actor: lvmnps.sp1
     outlet: purge
-    thermistor: supply
+    thermistor:
+      channel: supply

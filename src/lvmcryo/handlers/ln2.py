@@ -59,7 +59,8 @@ def get_valve_info():
     internal_config = get_internal_config()
 
     return {
-        valve: ValveConfig(**data) for valve, data in internal_config["valves"].items()
+        valve: ValveConfig(**data)
+        for valve, data in internal_config["valve_info"].items()
     }
 
 
@@ -104,7 +105,7 @@ class LN2Handler:
             self._progress_bar = None
             self.console = Console()
 
-        self._valve_handlers: dict[str, ValveHandler] = {}
+        self.valve_handlers: dict[str, ValveHandler] = {}
         for camera in self.cameras + [self.purge_valve]:
             if camera not in self.valve_info:
                 raise ValueError(f"Cannot find valve infor for {camera!r}.")
@@ -113,11 +114,11 @@ class LN2Handler:
             outlet = self.valve_info[camera].outlet
             thermistor = self.valve_info[camera].thermistor
 
-            self._valve_handlers[camera] = ValveHandler(
+            self.valve_handlers[camera] = ValveHandler(
                 camera,
                 actor,
                 outlet,
-                thermistor_channel=thermistor,
+                thermistor_info=thermistor.model_dump() if thermistor else None,
                 progress_bar=self._progress_bar,
                 log=self.log,
                 dry_run=self.dry_run,
@@ -224,11 +225,21 @@ class LN2Handler:
                 self.fail()
                 raise RuntimeError(f"Failed reading thermistors: {err}")
 
-            for valve in self._valve_handlers:
-                channel = self._valve_handlers[valve].thermistor_channel or valve
-                assert channel is not None, f"invalid thermistor channel {channel!r}."
+            for valve in self.valve_handlers:
+                thermistor_info = self.valve_info[valve].thermistor
 
-                thermistor_value = thermistors[channel]
+                if thermistor_info is None:
+                    self.log.warning(f"Cannot check thermistor for {valve}.")
+                    continue
+
+                if thermistor_info.disabled:
+                    self.log.warning(f"Thermistor for {valve} is disabled.")
+                    continue
+
+                if thermistor_info.channel is None:
+                    raise RuntimeError(f"Thermistor channel for {valve} not defined.")
+
+                thermistor_value = thermistors[thermistor_info.channel]
                 if thermistor_value is True:
                     self.fail()
                     raise RuntimeError(f"Thermistor for valve {valve} is active.")
@@ -275,7 +286,7 @@ class LN2Handler:
         if purge_valve is None:
             purge_valve = self.purge_valve
 
-        valve_handler = self._valve_handlers[purge_valve]
+        valve_handler = self.valve_handlers[purge_valve]
 
         self.event_times.purge_start = self._get_now()
 
@@ -348,7 +359,7 @@ class LN2Handler:
 
         for camera in cameras:
             try:
-                valve_handler = self._valve_handlers[camera]
+                valve_handler = self.valve_handlers[camera]
             except KeyError:
                 raise RuntimeError(f"Unable to find valve for camera {camera!r}.")
 
@@ -465,7 +476,7 @@ class LN2Handler:
 
         tasks: list[Coroutine] = []
 
-        for valve_handler in self._valve_handlers.values():
+        for valve_handler in self.valve_handlers.values():
             if valve_handler.active or not only_active:
                 tasks.append(valve_handler.finish())
 

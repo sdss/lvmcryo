@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import warnings
 from dataclasses import dataclass
 from time import time
@@ -82,8 +81,6 @@ class ThermistorMonitor:
 
             self.data.append({"timestamp": time(), "data": data})
 
-            await asyncio.sleep(0.01)
-
             await asyncio.sleep(self.interval)
 
     @classmethod
@@ -103,89 +100,125 @@ class ThermistorHandler:
     ----------
     valve_handler
         The `.ValveHandler` instance associated with this thermistor.
-    interval
+    channel
+        The name of the thermistor channel to monitor.
+    monitoring_interval
         The interval in seconds between thermistor checks.
     min_open_time
         The minimum valve open time. The thermistor will not be read until
         the minimum time has been reached.
     close_valve
         If ``True``, closes the valve once the thermistor is active.
-    min_active_time
+    required_active_time
         Number of seconds the thermistor must be active before the valve is
         closed.
-    log
-        A logger instance.
+    disabled
+        If ``True``, the thermistor is disabled and we will not monitor it.
 
     """
 
     valve_handler: ValveHandler
-    interval: float = 1.0
+    channel: str
+    monitoring_interval: float = 1.0
     min_open_time: float = 0.0
     close_valve: bool = True
-    min_active_time: float = 10.0
-    log: logging.Logger | None = None
+    required_active_time: float = 10.0
+    disabled: bool = False
 
     def __post_init__(self):
-        self.channel = self.valve_handler.thermistor_channel or self.valve_handler.valve
+        self.log = self.valve_handler.log
 
-        # Unix time at which we start monitoring.
-        self._start_time: float = -1
-
-        # Unix time at which we saw the last data point.
-        self._last_seen: float = -1
-
-        # Unix time at which the thermistor became active.
-        self._active_time: float = -1
-
-        self.thermistor_monitor = ThermistorMonitor(interval=self.interval)
+        self.thermistor_monitor = ThermistorMonitor(interval=self.monitoring_interval)
 
     async def start_monitoring(self):
         """Monitors the thermistor and potentially closes the valve."""
 
-        self._start_time = time()
+        # If the thermistor is not working return immediately and
+        # the valve will close on a timeout.
+        if self.disabled:
+            self.log.warning(
+                f"The thermistor for valve {self.valve_handler.valve} is disabled. "
+                "Will not monitor it."
+            )
+            return
+
+        # Unix time at which we start monitoring.
+        start_time = time()
         self.thermistor_monitor.start()
 
         self.valve_handler.log.debug(f"Starting to monitor thermistor {self.channel}.")
 
-        elapsed: float = -1
+        # Unix time at which we saw the last data point.
+        last_seen: float = 0
+
+        # Unix time at which the thermistor became active.
+        active_time: float = 0
+
+        # Elapsed time we have been monitoring.
+        elapsed_running: float = 0
+
+        # Elapsed time the thermistor has been active
+        elapsed_active: float = 0
+
+        # How long to wait to issue a warning if ThermistorMonitor
+        # is not providing new data.
+        alert_seconds = int(10 * self.monitoring_interval)
 
         while True:
-            await asyncio.sleep(self.interval)
+            await asyncio.sleep(self.monitoring_interval)
 
+            elapsed_running = time() - start_time
+
+            # Check that there are measurements in the data list.
             if len(self.thermistor_monitor.data) > 0:
+                # Get the last measurement.
                 data_point = self.thermistor_monitor.data[-1]
 
+                # Check that the last measurement includes the valve we are monitoring.
                 if self.channel in data_point["data"]:
-                    th_data = data_point["data"][self.channel]
-                    timestamp = data_point["timestamp"]
+                    th_data = data_point["data"][self.channel]  # Boolean
+                    timestamp = data_point["timestamp"]  # Unix time
 
-                    if abs(timestamp - self._last_seen) > 0.1:
-                        self._last_seen = timestamp
-                    if th_data:
-                        if self._active_time < 0:
-                            self._active_time = time()
+                    # Check that the data is fresh.
+                    if abs(timestamp - last_seen) > 0.1:
+                        last_seen = timestamp
 
-                        elapsed = time() - self._active_time
+                        # If the thermistor is active, track for how long.
+                        if th_data:
+                            if active_time <= 0:
+                                active_time = time()
 
-                        if (
-                            self._active_time > 0
-                            and elapsed > self.min_active_time
-                            and elapsed > self.min_open_time
-                        ):
-                            # The thermistor has been active for long enough.
-                            # Exit the loop and close the valve.
-                            break
+                            # Time the thermistor has been active.
+                            elapsed_active = time() - active_time
+
+                            # We require the time we have been running to
+                            # be > min_open_time and the the time the thermistor
+                            # has been active to be > required_active_time.
+                            if (
+                                active_time > 0
+                                and elapsed_active > self.required_active_time
+                                and elapsed_running > self.min_open_time
+                            ):
+                                # The thermistor has been active for long enough.
+                                # Exit the loop and close the valve.
+                                break
+
+                        else:
+                            # The thermistor is not active. Reset the active time and
+                            # elapsed active time in case we had a case in which
+                            # the thermistor was active for a short period and then
+                            # became inactive.
+                            active_time = 0
+                            elapsed_active = 0
 
             # Run some checks to be sure we are getting fresh data, but we won't
-            # fail the fill if that's the case, so we only do it if there's a logger.
+            # fail the fill if that's the case, so we only do it if there's a logger
+            # to which we can report.
             if self.log is not None:
-                last_seen_elapsed = time() - self._last_seen
-                monitoring_elapsed = time() - self._start_time
+                last_seen_elapsed = time() - last_seen
 
-                alert_seconds = int(10 * self.interval)
-
-                is_late = self._last_seen > 0 and last_seen_elapsed > alert_seconds
-                never_seen = self._last_seen < 0 and monitoring_elapsed > alert_seconds
+                is_late = last_seen > 0 and last_seen_elapsed > alert_seconds
+                never_seen = last_seen <= 0 and elapsed_running > alert_seconds
 
                 if is_late or never_seen:
                     self.log.warning(
@@ -193,11 +226,9 @@ class ThermistorHandler:
                         f"in the last {alert_seconds} seconds."
                     )
 
-            await asyncio.sleep(self.interval)
-
         self.valve_handler.log.debug(
             f"Thermistor {self.channel} has been active for more than "
-            f"{elapsed:.1f} seconds."
+            f"{elapsed_active:.1f} seconds. Stopping thermistor monitoring."
         )
 
         if self.close_valve:

@@ -479,7 +479,7 @@ async def ln2(
         config.cameras,
         interactive=config.interactive == "yes",
         log=log,
-        valve_info=config.valves,
+        valve_info=config.valve_info,
         dry_run=config.dry_run,
         alerts_route=config.internal_config["api_routes"]["alerts"],
     )
@@ -542,6 +542,10 @@ async def ln2(
                 with json_path.open("r") as ff:
                     log_data = [json.loads(line) for line in ff.readlines()]
 
+            configuration_json = config.model_dump() | {
+                valve: valve_model.model_dump()
+                for valve, valve_model in config.valve_info.items()
+            }
             record_pk = await post_fill_tasks(
                 handler,
                 write_data=config.write_data,
@@ -556,7 +560,7 @@ async def ln2(
                     "log_file": str(config.log_path) if config.log_path else None,
                     "json_file": str(json_path) if json_path else None,
                     "log_data": log_data,
-                    "configuration": config.model_dump(),
+                    "configuration": configuration_json,
                 },
             )
 

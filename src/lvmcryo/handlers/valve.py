@@ -139,7 +139,7 @@ async def close_all_valves(config: Configuration | None = None, dry_run: bool = 
     """Closes all the outlets."""
 
     config = config or get_internal_config()
-    valve_info = config["valves"]
+    valve_info = config["valve_info"]
 
     await asyncio.gather(
         *[
@@ -172,8 +172,8 @@ class ValveHandler:
         The NPS actor that command the valve.
     outlet
         The outlet name of the valve in the actor.
-    thermistor_channel
-        The channel name of the thermistor connected to the valve.
+    thermistor_info
+        Configuration data for the thermistor.
     progress_bar
         Progress bar instance used to display progress.
     dry_run
@@ -184,14 +184,12 @@ class ValveHandler:
     valve: str
     actor: str
     outlet: str
-    thermistor_channel: str | None = None
+    thermistor_info: dict[str, Any] | None = None
     progress_bar: Optional[TimerProgressBar] = None
     log: logging.Logger = field(default_factory=get_fake_logger)
     dry_run: bool = False
 
     def __post_init__(self):
-        self.thermistor = ThermistorHandler(self)
-
         self._thread_id: int | None = None
         self._progress_bar_id: TaskID | None = None
 
@@ -214,8 +212,8 @@ class ValveHandler:
         min_open_time
             Minimum time to keep the valve open.
         max_open_time
-            The maximumtime to keep the valve open. If ``None``, defaults to
-            the ``max_open_time`` value.
+            The maximum time to keep the valve open. If ``None``, a default
+            value is used.
         use_thermistor
             Whether to use the thermistor to close the valve. If ``True`` and
             ``fill_time`` is not ``None``, ``fill_time`` become the maximum
@@ -237,9 +235,15 @@ class ValveHandler:
 
         await self._set_state(True, timeout=max_open_time, use_script=True)
 
-        if use_thermistor:
-            self.thermistor.min_open_time = min_open_time
-            self._monitor_task = asyncio.create_task(self.thermistor.start_monitoring())
+        if use_thermistor and self.thermistor_info:
+            thermistor_channel = self.thermistor_info.pop("channel", self.valve)
+            thermistor = ThermistorHandler(
+                self,
+                channel=thermistor_channel,
+                **self.thermistor_info,
+            )
+            thermistor.min_open_time = min_open_time
+            self._monitor_task = asyncio.create_task(thermistor.start_monitoring())
 
         if self.progress_bar:
             if self.valve.lower() == "purge":

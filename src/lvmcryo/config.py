@@ -47,12 +47,31 @@ class NotificationLevel(str, Enum):
     error = "error"
 
 
+class ThermistorConfig(BaseModel):
+    """Thermistor configuration model."""
+
+    channel: str | None = None
+    monitoring_interval: float = 1.0
+    close_valve: bool = True
+    required_active_time: float = 10.0
+    disabled: bool = False
+
+
 class ValveConfig(BaseModel):
     """Valve configuration model."""
 
     actor: str
     outlet: str
-    thermistor: str | None = None
+    thermistor: ThermistorConfig | None = Field(default_factory=ThermistorConfig)
+
+    @model_validator(mode="after")
+    def validate_after(self) -> Self:
+        """Validates the valve configuration after the fields have been set."""
+
+        if self.thermistor and self.thermistor.channel is None:
+            self.thermistor.channel = self.outlet
+
+        return self
 
 
 ExcludedField = Field(repr=False, exclude=True)
@@ -112,7 +131,7 @@ class Config(BaseModel):
     data_path: pathlib.Path | None = None
     data_extra_time: float = 0.0
 
-    valves: Annotated[dict[str, ValveConfig], ExcludedField] = {}
+    valve_info: Annotated[dict[str, ValveConfig], ExcludedField] = {}
 
     config_file: Annotated[pathlib.Path | None, ExcludedField] = None
     _internal_config: Annotated[Configuration, PrivateAttr] = Configuration({})
@@ -181,10 +200,10 @@ class Config(BaseModel):
                 raise ValueError("No cameras defined in the configuration file.")
             data["cameras"] = defaults["cameras"]
 
-        if "valves" not in data or data["valves"] is None:
-            if "valves" not in config:
-                raise ValueError("No valves defined in the configuration file.")
-            data["valves"] = config["valves"]
+        if "valve_info" not in data or data["valve_info"] is None:
+            if "valve_info" not in config:
+                raise ValueError("No valve_info defined in the configuration file.")
+            data["valve_info"] = config["valve_info"]
 
         # Fill out the interactive value for now with None. Will be validated later.
         if "interactive" not in data:
