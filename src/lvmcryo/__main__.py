@@ -431,7 +431,7 @@ async def ln2(
         )
     except ValueError as err:
         err_console.print(f"[red]Error parsing configuration:[/] {err}")
-        return typer.Exit(1)
+        raise typer.Exit(1)
 
     if config.write_log and config.log_path:
         log.start_file_logger(str(config.log_path))
@@ -512,25 +512,22 @@ async def ln2(
         # Do not do anything special for this error, just exit.
         skip_finally = True
 
-        return typer.Exit(1)
+        raise typer.Exit(1)
 
     except Exception as err:
         log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
 
-        # Close here because the stderr console messes the progress bar.
-        # Probably overkill since we clear it almost everywhere in case of an error.
-        await handler.clear()
-
-        err_console.print(f"[red]Error found during {action.value}:[/] {err}")
-
-        log.sh.setLevel(1000)  # Log the traceback to file but do not print.
+        # Log the traceback to file but do not print.
+        orig_sh_level = log.sh.level
+        log.sh.setLevel(1000)
         log.exception(f"Error during {action.value}.", exc_info=err)
+        log.sh.setLevel(orig_sh_level)
 
         error = err
         if with_traceback:
             raise
 
-        return typer.Exit(1)
+        raise typer.Exit(1)
 
     else:
         log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
@@ -549,12 +546,12 @@ async def ln2(
                 handler,
                 write_data=config.write_data,
                 data_path=config.data_path,
-                data_extra_time=config.data_extra_time,
+                data_extra_time=config.data_extra_time if error is None else None,
                 api_data_route=config.internal_config["api_routes"]["fill_data"],
                 write_to_db=True,
                 api_db_route=config.internal_config["api_routes"]["register_fill"],
                 db_extra_payload={
-                    "error": error,
+                    "error": str(error) if error else None,
                     "action": action.value,
                     "log_file": str(config.log_path) if config.log_path else None,
                     "json_file": str(json_path) if json_path else None,
@@ -584,7 +581,12 @@ async def ln2(
                         subject="SUCCESS: LVM LN2 fill",
                     )
 
-    return typer.Exit(0)
+            if error:
+                # Last message before existing.
+                err_console.print(f"[red]Error found during {action.value}:[/] {error}")
+
+    if error:
+        raise typer.Exit(1)
 
 
 async def _close_valves_helper():
@@ -597,7 +599,7 @@ async def _close_valves_helper():
         info_console.print("[green]All valves closed.[/]")
     except Exception as err:
         info_console.print(f"[red]Error closing valves:[/] {err}")
-        return typer.Exit(1)
+        raise typer.Exit(1)
 
     return typer.Exit(0)
 

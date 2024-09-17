@@ -7,6 +7,7 @@
 
     <body style="font-size: 14px">
         <h1>An alert was raised during an LVM LN2 fill</h1>
+        <hr/>
 
         {% if error %}
             <div style="padding: 5px 0px">The error message was:</div>
@@ -19,33 +20,38 @@
             At your earliest convenience please check the status of the LVM spectrograph system. You can access Grafana plots <a href="https://lvm-grafana.lco.cl">here</a>.
         </div>
 
+        <div style="padding-top: 20px; font-weight: 600">Events</div>
+        <hr/>
         <div style="padding: 5px 20px">
             <table style="border-spacing: 5px 10px; border: 0px solid">
                 <tr>
                     <td>Time of the start of the purge</td>
-                    <td style="padding-left: 20px">{{ event_times.purge_start_time.strftime('%H:%M:%S %Y-%m-%d') if event_times.purge_start_time }}</td>
+                    <td style="padding-left: 20px">{{ event_times.purge_start.strftime('%Y-%m-%d %H:%M:%S') if event_times.purge_start }}</td>
                 </tr>
                 <tr>
                     <td>Time of the start of the fill</td>
-                    <td style="padding-left: 20px">{{ event_times.fill_start_time.strftime('%H:%M:%S %Y-%m-%d') if event_times.fill_start_time }}</td>
+                    <td style="padding-left: 20px">{{ event_times.fill_start.strftime('%Y-%m-%d %H:%M:%S') if event_times.fill_start }}</td>
                 </tr>
                 <tr>
                     <td>Time when the purge or fill failed</td>
-                    <td style="padding-left: 20px">{{ event_times.fill_fail_time.strftime('%H:%M:%S %Y-%m-%d') if fill_fail_time }}</td>
+                    <td style="padding-left: 20px">{{ event_times.failed.strftime('%Y-%m-%d %H:%M:%S') if event_times.failed }}</td>
+                </tr>
+                <tr>
+                    <td>Time when the purge or fill was aborted</td>
+                    <td style="padding-left: 20px">{{ event_times.aborted.strftime('%Y-%m-%d %H:%M:%S') if event_times.aborted }}</td>
                 </tr>
             </table>
         </div>
 
+        <div style="padding-top: 20px; font-weight: 600">Cryostat status at time of failure</div>
+        <hr/>
         {% if spec_data %}
-            <div style="padding-top: 20px">Cryostat status at the time of the failure</div>
-            <hr/>
-
             <div style="padding: 5px 20px">
-                <table style="border-spacing: 20px 20px; border: 1px solid; font-family: monospace">
+                <table style="border-spacing: 10px 10px; border: 0px solid; font-family: monospace">
                     <tr>
                         <th>Cryostat</th>
-                        <th>CCD Temperature (C)</th>
-                        <th>LN<subs>2</subsub>temperature (C)</th>
+                        <th>CCD temp. (C)</th>
+                        <th>LN<sub>2</sub> temp. (C)</th>
                         <th>Pressure (torr)</th>
                     </tr>
                     {% for cryostat in spec_data %}
@@ -64,14 +70,13 @@
                     {% endfor %}
                 </table>
             </div>
-
         {% else %}
             <div style="padding-top: 20px">Cryostat data was not available at the time of sending this email.</div>
         {% endif %}
 
+        <div style="padding-top: 20px; font-weight: 600">Log stream</div>
+        <hr/>
         {% if log_blob %}
-            <div style="padding-top: 20px">Log stream follows</div>
-            <hr/>
             <div style="padding: 0px 20px; font-family: monospace !important">
                 {{ log_blob }}
             </div>
