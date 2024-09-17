@@ -286,6 +286,7 @@ async def post_fill_tasks(
                         "abort_time": date_json(event_times.abort_time),
                         "failed": handler.failed,
                         "aborted": handler.aborted,
+                        "plot_paths": {k: str(v) for k, v in plot_paths.items()},
                         **db_extra_payload,
                     },
                 )
