@@ -243,6 +243,7 @@ async def post_fill_tasks(
 
                 data_path.parent.mkdir(parents=True, exist_ok=True)
                 data.write_parquet(data_path)
+                log.debug(f"Fill data written to {data_path!r}")
 
                 if generate_data_plots:
                     log.debug("Generating plots.")
@@ -259,6 +260,7 @@ async def post_fill_tasks(
                         transparent=True,
                     )
                     plot_paths.update(plot_paths_transparent)
+                    log.debug(f"Plots saved to {plot_path_root}*.")
 
         except Exception as ee:
             log.error(f"Failed to retrieve fill data from API: {ee!r}")
