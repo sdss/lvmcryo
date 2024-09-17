@@ -245,6 +245,7 @@ async def post_fill_tasks(
                 data.write_parquet(data_path)
 
                 if generate_data_plots:
+                    log.debug("Generating plots.")
                     plot_path_root = str(data_path.with_suffix(""))
                     await run_in_executor(generate_plots, data, plot_path_root)
                     await run_in_executor(
