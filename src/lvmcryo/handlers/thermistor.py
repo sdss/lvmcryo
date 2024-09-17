@@ -152,7 +152,7 @@ class ThermistorHandler:
         last_seen: float = 0
 
         # Unix time at which the thermistor became active.
-        active_time: float = 0
+        active_start_time: float = 0
 
         # Elapsed time we have been monitoring.
         elapsed_running: float = 0
@@ -185,17 +185,29 @@ class ThermistorHandler:
 
                         # If the thermistor is active, track for how long.
                         if th_data:
-                            if active_time <= 0:
-                                active_time = time()
+                            if active_start_time <= 0:
+                                active_start_time = time()
+
+                                if elapsed_running > self.min_open_time:
+                                    self.log.info(
+                                        f"Thermistor {self.channel} is active. Waiting "
+                                        f"{self.required_active_time} seconds before "
+                                        "closing the valve."
+                                    )
+                                else:
+                                    self.log.info(
+                                        f"Thermistor {self.channel} is active but "
+                                        "the minimum open time has not been reached."
+                                    )
 
                             # Time the thermistor has been active.
-                            elapsed_active = time() - active_time
+                            elapsed_active = time() - active_start_time
 
                             # We require the time we have been running to
                             # be > min_open_time and the the time the thermistor
                             # has been active to be > required_active_time.
                             if (
-                                active_time > 0
+                                active_start_time > 0
                                 and elapsed_active > self.required_active_time
                                 and elapsed_running > self.min_open_time
                             ):
@@ -208,7 +220,13 @@ class ThermistorHandler:
                             # elapsed active time in case we had a case in which
                             # the thermistor was active for a short period and then
                             # became inactive.
-                            active_time = 0
+                            if active_start_time > 0:
+                                self.log.warning(
+                                    f"Thermistor {self.channel} is no longer active. "
+                                    "Resetting counters."
+                                )
+
+                            active_start_time = 0
                             elapsed_active = 0
 
             # Run some checks to be sure we are getting fresh data, but we won't

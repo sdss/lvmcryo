@@ -270,7 +270,7 @@ async def post_fill_tasks(
 
     if write_to_db and api_db_route:
         try:
-            log.info("Writing fill data to database.")
+            log.info("Writing fill metadata to database.")
             async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.post(
                     api_db_route,
