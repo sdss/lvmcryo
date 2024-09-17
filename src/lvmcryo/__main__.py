@@ -368,7 +368,7 @@ async def ln2(
 
     from sdsstools.logger import CustomJsonFormatter, get_logger
 
-    from lvmcryo.handlers.ln2 import LN2Handler
+    from lvmcryo.handlers.ln2 import LN2Handler, get_now
     from lvmcryo.notifier import Notifier
     from lvmcryo.runner import ln2_runner
     from lvmcryo.tools import LockExistsError, ensure_lock
@@ -386,6 +386,7 @@ async def ln2(
     json_path: pathlib.Path | None = None
     json_handler: FileHandler | None = None
     log_data: list[dict] | None = None
+    images: dict[str, pathlib.Path | None] = {}
 
     if action == Actions.abort:
         return await _close_valves_helper()
@@ -505,8 +506,10 @@ async def ln2(
 
         if notify:
             log.warning("Sending failure notifications.")
-            await notifier.notify_failure(
-                f"LN2 {action.value} failed because a lockfile was already present."
+            await notifier.notify_after_fill(
+                False,
+                error_message=f"LN2 {action.value} failed because a lockfile "
+                "was already present.",
             )
 
         # Do not do anything special for this error, just exit.
@@ -534,6 +537,7 @@ async def ln2(
         log.info(f"LN2 {action.value} completed successfully.")
 
     finally:
+        handler.event_times.end_time = get_now()
         await handler.clear()
 
         if not skip_finally:
@@ -546,7 +550,7 @@ async def ln2(
                 valve: valve_model.model_dump()
                 for valve, valve_model in config.valve_info.items()
             }
-            record_pk = await post_fill_tasks(
+            record_pk, plot_paths = await post_fill_tasks(
                 handler,
                 write_data=config.write_data,
                 data_path=config.data_path,
@@ -564,13 +568,24 @@ async def ln2(
                 },
             )
 
+            images = {
+                "pressure": plot_paths.get("pressure_png", None),
+                "temps": plot_paths.get("temps_png", None),
+                "thermistors": plot_paths.get("thermistors_png", None),
+            }
+
             if record_pk:
                 log.debug(f"Record {record_pk} created in the database.")
 
             if notify:
                 if error:
                     log.warning("Sending failure notifications.")
-                    await notifier.notify_failure(error, handler)
+                    await notifier.notify_after_fill(
+                        False,
+                        error_message=error,
+                        handler=handler,
+                        images=images,
+                    )
 
                 elif config.email_level == NotificationLevel.info:
                     # The handler has already emitted a notification to
@@ -579,10 +594,12 @@ async def ln2(
                     # TODO: include log and more data here.
                     # For now it's just plain text.
 
-                    log.debug("Sending notification email.")
-                    notifier.send_email(
-                        message="The LN2 fill completed successfully.",
-                        subject="SUCCESS: LVM LN2 fill",
+                    log.info("Sending notification email.")
+                    await notifier.notify_after_fill(
+                        True,
+                        handler=handler,
+                        images=images,
+                        post_to_slack=False,  # Already done.
                     )
 
             if error:

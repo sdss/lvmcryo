@@ -11,8 +11,11 @@ from __future__ import annotations
 import pathlib
 import smtplib
 import traceback
+import uuid
 import warnings
-from email.message import EmailMessage
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from typing import TYPE_CHECKING
 
@@ -133,18 +136,22 @@ class Notifier:
 
     def send_email(
         self,
-        message: str,
+        html_message: str | None = None,
+        plaintext_message: str | None = None,
         subject: str = "A message from lvmcryo",
         recipients: list[str] | None = None,
         from_address: str | None = None,
+        images: dict[str, pathlib.Path | None] = {},
         email_server: str | None = None,
     ):
         """Sends an email to a list of recipients.
 
         Parameters
         ----------
-        message
-            The body of the email. Can be a string in HTML format.
+        html_message
+            The body of the email as an HTML string.
+        plaintext_message
+            An alternative plaintext version of the email body.
         subject
             The subject of the email.
         recipients
@@ -153,6 +160,11 @@ class Notifier:
         from_address
             The email address to send the email from. If ``None``, uses the default
             address in the configuration.
+        images
+            A mapping of images to embed. This requires an ``html_message``. The
+            mapping must be in the form ``{xyx: path}``, where ``xyz`` is the
+            content ID key associated to the image. In the HTML text there must
+            be a corresponding ``<img src="cid:xyz">`` tag.
         email_server
             The SMTP server to use. If ``None``, uses the default server in the
             configuration.
@@ -173,39 +185,58 @@ class Notifier:
 
         email_reply_to = self.config.email_reply_to or from_address
 
-        msg = EmailMessage()
+        msg = MIMEMultipart("alternative" if html_message else "mixed")
         msg["Subject"] = subject
         msg["From"] = from_address
         msg["To"] = ", ".join(recipients)
         msg["Reply-To"] = email_reply_to
 
-        if "<html>" in message.lower():
-            msg.set_content(
-                "This email is in HTML format. Please use an "
-                "HTML-capable email client to read it."
-            )
-            msg.add_alternative(message, subtype="html")
-        else:
-            msg.set_content(message)
+        plain = MIMEText(
+            plaintext_message
+            or "A message was sent from lvmcryo but your email "
+            "client cannot process HTML.",
+            "plain",
+        )
+        msg.attach(plain)
+
+        if html_message:
+            for cid, image in images.items():
+                # Need to replace the cid with a globally unique one.
+                cid_unique = f"{cid}-{uuid.uuid4()!s}"
+                html_message = html_message.replace(f"cid:{cid}", f"cid:{cid_unique}")
+
+                if image is not None and pathlib.Path(image).exists():
+                    with open(image, "rb") as fp:
+                        image = MIMEImage(fp.read())
+
+                    # Specify the  ID according to the img src in the HTML part
+                    image.add_header("Content-ID", f"<{cid_unique}>")
+                    msg.attach(image)
+
+            html = MIMEText(html_message, "html")
+            msg.attach(html)
 
         try:
             with smtplib.SMTP(host=email_host, port=email_port) as smtp:
-                smtp.send_message(msg)
+                smtp.sendmail(from_address, ", ".join(recipients), msg.as_string())
         except Exception as ee:
             warnings.warn(f"Failed sending email: {ee}")
             return False
 
         return True
 
-    async def notify_failure(
+    async def notify_after_fill(
         self,
-        error: str | Exception | None = None,
+        success: bool,
+        error_message: str | Exception | None = None,
         handler: LN2Handler | None = None,
-        channels: list[str] = ["slack", "email"],
+        post_to_slack: bool = True,
+        send_email: bool = True,
         include_status: bool = True,
         include_log: bool = True,
+        images: dict[str, pathlib.Path | None] = {},
     ):
-        """Notifies a fill failure to the users."""
+        """Notifies a fill success or failure to the users."""
 
         log = handler.log if handler else get_fake_logger()
 
@@ -240,57 +271,86 @@ class Notifier:
                 log_data = open(log_filename, "r").read()
                 log_blob = pygments.highlight(log_data, RustLexer(), formatter)
 
-        for channel in channels:
+        if post_to_slack:
             try:
-                if channel == "slack":
+                if success:
+                    slack_message = "LN₂ fill completed successfully."
+                else:
                     slack_message = (
                         "Something went wrong with the LN₂ fill. "
                         "Please check the status of the spectrographs. "
                         "Grafana plots are available <https://lvm-grafana.lco.cl|here>."
                     )
-                    if error:
-                        if isinstance(error, Exception):
-                            trace = "".join(traceback.format_exception(error))
+                    if error_message:
+                        if isinstance(error_message, Exception):
+                            trace = "".join(traceback.format_exception(error_message))
                             slack_message += f"\n```{trace}```"
                         else:
-                            slack_message += f"\nThe error was: {error}"
+                            slack_message += f"\nThe error was: {error_message}"
 
-                    await self.post_to_slack(
-                        text=slack_message,
-                        level=NotificationLevel.error,
-                    )
+                await self.post_to_slack(
+                    text=slack_message,
+                    level=NotificationLevel.error,
+                )
 
-                elif channel == "email":
-                    try:
-                        if isinstance(error, Exception):
+            except Exception as err:
+                log.error(f"Failed posting to Slack: {err!r}")
+
+        if send_email:
+            subject: str = (
+                "SUCCESS: LVM LN2 fill completed"
+                if success
+                else "ERROR: LVM LN2 fill failed"
+            )
+            plain_message: str = (
+                "LN2 fill completed successfully."
+                if success
+                else "LN2 fill failed. Please check the cryostats."
+            )
+            html_message: str | None = None
+            email_error: str | None = None
+            template = "success_message.html" if success else "alert_message.html"
+
+            try:
+                try:
+                    if not success:
+                        if isinstance(error_message, Exception):
                             email_error = pygments.highlight(
-                                "".join(traceback.format_exception(error)),
+                                "".join(traceback.format_exception(error_message)),
                                 PythonTracebackLexer(),
                                 formatter,
                             )
                         else:
-                            email_error = error
+                            email_error = error_message
 
-                        message = render_template(
-                            "alert_message.html",
-                            render_data=dict(
-                                event_times=handler.event_times if handler else {},
-                                spec_data=spec_data,
-                                log_blob=log_blob,
-                                log_css=formatter.get_style_defs(),
-                                error=email_error,
-                            ),
+                        plain_message = (
+                            "LN2 fill failed. Please check the cryostats. "
+                            "You are not receiving a full message because your email "
+                            "client does not support HTML."
                         )
-                    except Exception as err:
-                        log.error(f"Failed rendering alert template: {err!r}")
-                        log.warning("Sending a plain text message.")
-                        message = "LN2 fill failed. Please check the cryostats!!!"
 
-                    self.send_email(
-                        subject="ERROR: LVM LN2 fill failed",
-                        message=message,
+                    html_message = render_template(
+                        template,
+                        render_data=dict(
+                            event_times=handler.event_times if handler else {},
+                            spec_data=spec_data,
+                            log_blob=log_blob,
+                            log_css=formatter.get_style_defs(),
+                            error=email_error,
+                            images=True if len(images) > 0 else False,
+                        ),
                     )
 
+                except Exception as err:
+                    log.error(f"Failed rendering template: {err!r}")
+                    log.warning("Sending a plain text message.")
+
+                self.send_email(
+                    subject=subject,
+                    html_message=html_message,
+                    plaintext_message=plain_message,
+                    images=images,
+                )
+
             except Exception as err:
-                log.error(f"Failed sending alert over {channel}: {err!r}")
-                continue
+                log.error(f"Failed sending email: {err!r}")

@@ -36,9 +36,17 @@ def convert_datetime_to_iso_8601_with_z_suffix(dt: datetime.datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def get_now():
+    """Returns a UTC datetime for now."""
+
+    return datetime.datetime.now(datetime.UTC)
+
+
 class EventDict(BaseModel):
     """Dictionary of events."""
 
+    start_time: datetime.datetime = field(default_factory=get_now)
+    end_time: datetime.datetime | None = None
     purge_start: datetime.datetime | None = None
     purge_complete: datetime.datetime | None = None
     fill_start: datetime.datetime | None = None
@@ -248,11 +256,6 @@ class LN2Handler:
 
         return True
 
-    def _get_now(self):
-        """Returns a UTC datetime for now."""
-
-        return datetime.datetime.now(datetime.UTC)
-
     async def purge(
         self,
         purge_valve: str | None = None,
@@ -288,7 +291,7 @@ class LN2Handler:
 
         valve_handler = self.valve_handlers[purge_valve]
 
-        self.event_times.purge_start = self._get_now()
+        self.event_times.purge_start = get_now()
 
         self.log.info(
             f"Beginning purge using valve {valve_handler.valve!r} with "
@@ -315,7 +318,7 @@ class LN2Handler:
             raise
 
         finally:
-            self.event_times.purge_complete = self._get_now()
+            self.event_times.purge_complete = get_now()
             if prompt:
                 sshkeyboard.stop_listening()
                 await asyncio.sleep(1)
@@ -371,7 +374,7 @@ class LN2Handler:
                 )
             )
 
-        self.event_times.fill_start = self._get_now()
+        self.event_times.fill_start = get_now()
 
         self.log.info(
             f"Beginning fill on cameras {cameras!r} with "
@@ -394,7 +397,7 @@ class LN2Handler:
             raise
 
         finally:
-            self.event_times.fill_complete = self._get_now()
+            self.event_times.fill_complete = get_now()
             if prompt:
                 sshkeyboard.stop_listening()
                 await asyncio.sleep(1)
@@ -425,13 +428,13 @@ class LN2Handler:
             Panel(
                 Align(
                     render(
-                        'Press [green]"x"[/] to abort or [green]"enter"[/] '
-                        f"to finish the {action}."
+                        f'Press [green]"enter"[/] to finish the {action} '
+                        'or [green]"x"[/] to abort.'
                     ),
                     "center",
                 ),
                 box=box.HEAVY,
-                border_style="red",
+                border_style="green",
             )
         )
 
@@ -496,12 +499,12 @@ class LN2Handler:
         """Sets the fail flag and event time."""
 
         self.failed = True
-        self.event_times.failed = self._get_now()
+        self.event_times.failed = get_now()
 
     def abort(self):
         """Aborts the fill."""
 
         self.aborted = True
-        self.event_times.aborted = self._get_now()
+        self.event_times.aborted = get_now()
 
         self.fail()

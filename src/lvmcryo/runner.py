@@ -13,7 +13,7 @@ import itertools
 import logging
 import pathlib
 import signal
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +24,7 @@ from sdsstools.utils import run_in_executor
 
 from lvmcryo.config import Actions
 from lvmcryo.handlers import LN2Handler, close_all_valves
+from lvmcryo.handlers.ln2 import get_now
 from lvmcryo.notifier import Notifier
 
 
@@ -42,10 +43,10 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     await handler.clear()
 
     handler.aborted = True
-    handler.event_times.aborted = handler._get_now()
+    handler.event_times.aborted = get_now()
 
-    handler.event_times.failed = handler._get_now()
-    handler.event_times.aborted = handler._get_now()
+    handler.event_times.failed = get_now()
+    handler.event_times.aborted = get_now()
 
 
 async def ln2_runner(
@@ -74,8 +75,7 @@ async def ln2_runner(
         log.warning("Running in dry-run mode. No valves will be operated.")
 
     # Inform of the start of the fill in Slack.
-    now = handler._get_now()
-    now_str = now.strftime("%H:%M:%S")
+    now_str = get_now().strftime("%H:%M:%S")
 
     action = config.action.value
 
@@ -141,6 +141,8 @@ async def ln2_runner(
     await notifier.post_to_slack(f"LN₂ `{action}` completed successfully.")
     await handler.clear()
 
+    handler.event_times.end_time = get_now()
+
 
 async def post_fill_tasks(
     handler: LN2Handler,
@@ -152,7 +154,7 @@ async def post_fill_tasks(
     write_to_db: bool = False,
     api_db_route: str = "http://lvm-hub.lco.cl:8080/api/spectrographs/fills/register",
     db_extra_payload: dict[str, Any] = {},
-) -> int | None:
+) -> tuple[int | None, dict[str, pathlib.Path]]:
     """Runs the post-fill tasks.
 
     Parameters
@@ -178,9 +180,10 @@ async def post_fill_tasks(
 
     Returns
     -------
-    record_id
-        The primary key of the associated record if the fill data was written to
-        the database. `None` otherwise.
+    record_id_paths
+        A tuple with the first element being the primary key of the associated record
+        if the fill data was written to the database (`None` otherwise) and the
+        second a mapping of plot type to path.
 
     """
 
@@ -189,30 +192,25 @@ async def post_fill_tasks(
 
     record_id: int | None = None
 
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-
     event_times = handler.event_times
+    plot_paths: dict[str, pathlib.Path] = {}
 
-    if not event_times.purge_start and not event_times.fill_start:
-        # Nothing to do, the fill never happened. Probably failed or was aborted.
-        pass
-    else:
-        if event_times.purge_start:
-            start_time = event_times.purge_start
-        elif event_times.fill_start:
-            start_time = event_times.fill_start
-
-    if event_times.failed or event_times.aborted:
-        end_time = event_times.failed or event_times.aborted
-    else:
-        end_time = event_times.fill_complete or event_times.purge_complete
-
-    if not write_data or not start_time or not end_time or not api_data_route:
+    if (
+        not write_data
+        or not event_times.start_time
+        or not event_times.end_time
+        or not api_data_route
+    ):
         write_data = False
         log.debug("Skipping data collection.")
 
-    if write_data and start_time and end_time:
+    if event_times.start_time and event_times.end_time:
+        interval = (event_times.end_time - event_times.start_time).seconds
+        if interval < 120:
+            log.warning("Fill duration was less than 2 minutes. Not collecting data.")
+            write_data = False
+
+    if write_data and event_times.start_time and event_times.end_time:
         if data_extra_time:
             log.info(f"Waiting {data_extra_time} seconds before collecting data.")
             await asyncio.sleep(data_extra_time)
@@ -223,12 +221,14 @@ async def post_fill_tasks(
             data_path = pathlib.Path(data_path)
 
         try:
-            log.debug("Retrieving and writing measurements.")
+            log.info("Retrieving and writing measurements.")
+
+            end_time = event_times.end_time + timedelta(seconds=data_extra_time or 0.0)
             async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.get(
                     api_data_route,
                     params={
-                        "start_time": int(start_time.timestamp()),
+                        "start_time": int(event_times.start_time.timestamp()),
                         "end_time": int(end_time.timestamp()),
                     },
                 )
@@ -247,13 +247,18 @@ async def post_fill_tasks(
                 if generate_data_plots:
                     log.debug("Generating plots.")
                     plot_path_root = str(data_path.with_suffix(""))
-                    await run_in_executor(generate_plots, data, plot_path_root)
-                    await run_in_executor(
+                    plot_paths = await run_in_executor(
+                        generate_plots,
+                        data,
+                        plot_path_root,
+                    )
+                    plot_paths_transparent = await run_in_executor(
                         generate_plots,
                         data,
                         plot_path_root,
                         transparent=True,
                     )
+                    plot_paths.update(plot_paths_transparent)
 
         except Exception as ee:
             log.error(f"Failed to retrieve fill data from API: {ee!r}")
@@ -263,13 +268,13 @@ async def post_fill_tasks(
 
     if write_to_db and api_db_route:
         try:
-            log.debug("Writing fill data to database.")
+            log.info("Writing fill data to database.")
             async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.post(
                     api_db_route,
                     json={
-                        "start_time": date_json(start_time),
-                        "end_time": date_json(end_time),
+                        "start_time": date_json(event_times.start_time),
+                        "end_time": date_json(event_times.end_time),
                         "purge_start": date_json(event_times.purge_start),
                         "purge_complete": date_json(event_times.purge_complete),
                         "fill_start": date_json(event_times.fill_start),
@@ -288,7 +293,7 @@ async def post_fill_tasks(
         except Exception as ee:
             log.error(f"Failed to write fill data to database: {ee!r}")
 
-    return record_id
+    return record_id, plot_paths
 
 
 def date_json(date: datetime | None) -> str | None:
@@ -319,13 +324,13 @@ def generate_plots(
     Returns
     -------
     paths
-        A list of generated plot paths.
+        A mapping of plot type to path.
 
     """
 
     import matplotlib.pyplot as plt
 
-    paths: list[pathlib.Path] = []
+    paths: dict[str, pathlib.Path] = {}
 
     colours: dict[str, str] = {
         "r": "red",
@@ -386,11 +391,11 @@ def generate_plots(
         if not transparent:
             path = f"{plot_path_root}_pressure{transparent_suffix}.pdf"
             fig.savefig(path)
-            paths.append(pathlib.Path(path))
+            paths[f"pressure{transparent_suffix}_pdf"] = pathlib.Path(path)
 
         path = f"{plot_path_root}_pressure{transparent_suffix}.png"
         fig.savefig(path, dpi=300, transparent=transparent)
-        paths.append(pathlib.Path(path))
+        paths[f"pressure{transparent_suffix}_png"] = pathlib.Path(path)
 
         plt.close(fig)
 
@@ -433,11 +438,11 @@ def generate_plots(
         if not transparent:
             path = f"{plot_path_root}_temps{transparent_suffix}.pdf"
             fig.savefig(path)
-            paths.append(pathlib.Path(path))
+            paths[f"temps{transparent_suffix}_pdf"] = pathlib.Path(path)
 
         path = f"{plot_path_root}_temps{transparent_suffix}.png"
         fig.savefig(path, dpi=300, transparent=transparent)
-        paths.append(pathlib.Path(path))
+        paths[f"temps{transparent_suffix}_png"] = pathlib.Path(path)
 
         plt.close(fig)
 
@@ -482,10 +487,12 @@ def generate_plots(
         if not transparent:
             path = f"{plot_path_root}_thermistors{transparent_suffix}.pdf"
             fig.savefig(path)
-            paths.append(pathlib.Path(path))
+            paths[f"thermistors{transparent_suffix}_pdf"] = pathlib.Path(path)
 
         path = f"{plot_path_root}_thermistors{transparent_suffix}.png"
         fig.savefig(path, dpi=300, transparent=transparent)
-        paths.append(pathlib.Path(path))
+        paths[f"thermistors{transparent_suffix}_png"] = pathlib.Path(path)
 
         plt.close(fig)
+
+    return paths
