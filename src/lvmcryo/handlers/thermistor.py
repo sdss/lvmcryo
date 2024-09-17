@@ -241,7 +241,7 @@ class ThermistorHandler:
                 if is_late or never_seen:
                     self.log.warning(
                         f"No data from the thermistor {self.channel} "
-                        f"in the last {alert_seconds} seconds."
+                        f"in the last {last_seen_elapsed} seconds."
                     )
 
         self.valve_handler.log.debug(
