@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import pathlib
 import signal
@@ -18,6 +19,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 import polars
+
+from sdsstools.utils import run_in_executor
 
 from lvmcryo.config import Actions
 from lvmcryo.handlers import LN2Handler, close_all_valves
@@ -145,6 +148,7 @@ async def post_fill_tasks(
     data_path: str | pathlib.Path | None = None,
     data_extra_time: float | None = None,
     api_data_route: str = "http://lvm-hub.lco.cl:8080/api/spectrographs/fills/measurements",
+    generate_data_plots: bool = True,
     write_to_db: bool = False,
     api_db_route: str = "http://lvm-hub.lco.cl:8080/api/spectrographs/fills/register",
     db_extra_payload: dict[str, Any] = {},
@@ -163,6 +167,8 @@ async def post_fill_tasks(
         Extra time to wait after the fill before collecting data.
     api_data_route
         The API route to retrive the fill data.
+    generate_data_plots
+        Whether to generate plots from the data.
     write_to_db
         Whether to write the data to the database.
     api_db_route
@@ -217,6 +223,7 @@ async def post_fill_tasks(
             data_path = pathlib.Path(data_path)
 
         try:
+            log.debug("Retrieving and writing measurements.")
             async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.get(
                     api_data_route,
@@ -237,6 +244,16 @@ async def post_fill_tasks(
                 data_path.parent.mkdir(parents=True, exist_ok=True)
                 data.write_parquet(data_path)
 
+                if generate_data_plots:
+                    plot_path_root = str(data_path.with_suffix(""))
+                    await run_in_executor(generate_plots, data, plot_path_root)
+                    await run_in_executor(
+                        generate_plots,
+                        data,
+                        plot_path_root,
+                        transparent=True,
+                    )
+
         except Exception as ee:
             log.error(f"Failed to retrieve fill data from API: {ee!r}")
 
@@ -245,6 +262,7 @@ async def post_fill_tasks(
 
     if write_to_db and api_db_route:
         try:
+            log.debug("Writing fill data to database.")
             async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.post(
                     api_db_route,
@@ -276,3 +294,197 @@ def date_json(date: datetime | None) -> str | None:
     """Serialises a datetime object to a JSON string."""
 
     return date.isoformat() if date else None
+
+
+def generate_plots(
+    data: polars.DataFrame,
+    plot_path_root: str,
+    transparent: bool = False,
+):
+    """Generates measurement plots.
+
+    Parameters
+    ----------
+    data
+        The data to plot.
+    plot_path_root
+        The root path where to save the plots. A number of plots will be generated
+        using this root path.
+    transparent
+        Whether to save the plots with a transparent background. The colours will
+        be adjusted to be visible on a dark background. The paths will be suffixed
+        with ``_transparent``. No PDFs will be generated in this case.
+
+    Returns
+    -------
+    paths
+        A list of generated plot paths.
+
+    """
+
+    import matplotlib.pyplot as plt
+
+    paths: list[pathlib.Path] = []
+
+    colours: dict[str, str] = {
+        "r": "red",
+        "b": "cyan" if transparent else "blue",
+        "z": "magenta",
+    }
+    linestyles: dict[str, str] = {"1": "-", "2": "--", "3": "-."}
+
+    transparent_suffix = "_transparent" if transparent else ""
+
+    date = data[0, "time"].strftime("%Y-%m-%d")
+
+    with plt.ioff():
+        if transparent:
+            plt.style.use("dark_background")
+        else:
+            plt.style.use("seaborn-v0_8-whitegrid")
+            plt.rcParams["axes.facecolor"] = "white"
+            plt.rcParams["figure.facecolor"] = "white"
+            plt.rcParams["savefig.facecolor"] = "white"
+
+        # Pressures
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        pressures = data.select(
+            polars.col.time,
+            polars.selectors.starts_with("pressure_"),
+        )
+
+        for spec, camera in itertools.product("123", "brz"):
+            column = f"pressure_{camera}{spec}"
+            if column not in pressures.columns:
+                continue
+
+            cam_pressure = pressures[column].to_numpy()
+
+            colour = colours.get(camera, "w" if transparent else "k")
+            linestyle = linestyles.get(spec, "-")
+
+            label = f"{camera}{spec}"
+
+            ax.plot(
+                pressures["time"].to_numpy(),
+                cam_pressure,
+                label=label,
+                color=colour,
+                linestyle=linestyle,
+            )
+
+        ax.set_title(f"Pressure during fill — {date}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Pressure [torr]")
+
+        ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), prop={"size": 9})
+
+        plt.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
+
+        if not transparent:
+            path = f"{plot_path_root}_pressure{transparent_suffix}.pdf"
+            fig.savefig(path)
+            paths.append(pathlib.Path(path))
+
+        path = f"{plot_path_root}_pressure{transparent_suffix}.png"
+        fig.savefig(path, dpi=300, transparent=transparent)
+        paths.append(pathlib.Path(path))
+
+        plt.close(fig)
+
+        # Temperatures
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        temps = data.select(
+            polars.col.time,
+            polars.selectors.starts_with("temp_"),
+        )
+
+        for spec, camera, sensor in itertools.product("123", "brz", ["ln2", "ccd"]):
+            column = f"temp_{camera}{spec}_{sensor}"
+            if column not in temps.columns:
+                continue
+
+            cam_temp = temps[column].to_numpy()
+
+            colour = colours.get(camera, "w" if transparent else "k")
+            linestyle = linestyles.get(spec, "-")
+            linewidth = 1.5 if sensor == "ln2" else 1
+
+            label = f"{camera}{spec} ({sensor.upper()})"
+
+            ax.plot(
+                temps["time"].to_numpy(),
+                cam_temp,
+                label=label,
+                color=colour,
+                linestyle=linestyle,
+                linewidth=linewidth,
+            )
+
+        ax.set_title(f"Temperature during fill — {date}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Temperature [C]")
+
+        ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), prop={"size": 9})
+
+        if not transparent:
+            path = f"{plot_path_root}_temps{transparent_suffix}.pdf"
+            fig.savefig(path)
+            paths.append(pathlib.Path(path))
+
+        path = f"{plot_path_root}_temps{transparent_suffix}.png"
+        fig.savefig(path, dpi=300, transparent=transparent)
+        paths.append(pathlib.Path(path))
+
+        plt.close(fig)
+
+        # Thermistors
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        therms = data.select(
+            polars.col.time,
+            polars.selectors.starts_with("thermistor_"),
+        )
+
+        cameras = ["".join(item)[::-1] for item in itertools.product("123", "brz")]
+        for channel in ["supply"] + cameras:
+            column = f"thermistor_{channel}"
+            if column not in therms.columns:
+                continue
+
+            cam_therm = therms[column].to_numpy()
+
+            if len(channel) == 2:
+                camera, spec = channel
+                colour = colours.get(camera, "w" if transparent else "k")
+                linestyle = linestyles.get(spec, "-")
+            else:
+                colour = "w" if transparent else "k"
+                linestyle = "-"
+
+            ax.plot(
+                therms["time"].to_numpy(),
+                cam_therm,
+                label=channel,
+                color=colour,
+                linestyle=linestyle,
+            )
+
+        ax.set_title(f"Thermistors during fill — {date}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("State")
+
+        ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), prop={"size": 9})
+
+        if not transparent:
+            path = f"{plot_path_root}_thermistors{transparent_suffix}.pdf"
+            fig.savefig(path)
+            paths.append(pathlib.Path(path))
+
+        path = f"{plot_path_root}_thermistors{transparent_suffix}.png"
+        fig.savefig(path, dpi=300, transparent=transparent)
+        paths.append(pathlib.Path(path))
+
+        plt.close(fig)
