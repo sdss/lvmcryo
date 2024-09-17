@@ -206,7 +206,7 @@ async def post_fill_tasks(
         log.debug("Skipping data collection.")
 
     if event_times.start_time and event_times.end_time:
-        interval = (event_times.end_time - event_times.start_time).seconds
+        interval = (event_times.end_time - event_times.start_time).total_seconds()
         if interval < 120:
             log.warning("Fill duration was less than 2 minutes. Not collecting data.")
             write_data = False

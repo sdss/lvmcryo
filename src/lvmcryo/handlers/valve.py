@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -196,6 +197,9 @@ class ValveHandler:
         self._monitor_task: asyncio.Task | None = None
         self._timeout_task: asyncio.Task | None = None
 
+        self.open_time: datetime | None = None
+        self.close_time: datetime | None = None
+
         self.event = asyncio.Event()
         self.active: bool = False
 
@@ -337,5 +341,9 @@ class ValveHandler:
                 )
             else:
                 self.log.info(f"Valve {self.valve!r} was open.")
+
+            self.open_time = datetime.now(UTC)
+
         else:
             self.log.info(f"Valve {self.valve!r} was closed.")
+            self.close_time = datetime.now(UTC)

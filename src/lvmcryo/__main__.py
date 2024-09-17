@@ -569,6 +569,7 @@ async def ln2(
                     "json_file": str(json_path) if json_path else None,
                     "log_data": log_data,
                     "configuration": configuration_json,
+                    "valve_times": handler.get_valve_times(as_string=True),
                 },
             )
 

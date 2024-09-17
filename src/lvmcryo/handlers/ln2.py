@@ -402,6 +402,32 @@ class LN2Handler:
                 sshkeyboard.stop_listening()
                 await asyncio.sleep(1)
 
+    def get_valve_times(
+        self,
+        as_string: bool = False,
+    ) -> dict[str, dict[str, str | datetime.datetime | None]]:
+        """Returns a dictionary of open/close times for the valves."""
+
+        result: dict[str, dict[str, str | datetime.datetime | None]] = {}
+
+        for valve in self.valve_handlers:
+            result[valve] = {"open_time": None, "close_time": None}
+
+            open_time = self.valve_handlers[valve].open_time
+            close_time = self.valve_handlers[valve].close_time
+
+            if open_time is not None:
+                result[valve]["open_time"] = (
+                    open_time.isoformat() if as_string else open_time
+                )
+
+            if close_time is not None:
+                result[valve]["close_time"] = (
+                    close_time.isoformat() if as_string else close_time
+                )
+
+        return result
+
     def _kb_monitor(self, action: str = "fill"):
         """Monitors the keyboard and cancels/aborts the fill.."""
 

@@ -13,6 +13,7 @@ import smtplib
 import traceback
 import uuid
 import warnings
+from datetime import datetime
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -310,6 +311,7 @@ class Notifier:
             html_message: str | None = None
             email_error: str | None = None
             template = "success_message.html" if success else "alert_message.html"
+            valve_data = {}
 
             try:
                 try:
@@ -329,6 +331,32 @@ class Notifier:
                             "client does not support HTML."
                         )
 
+                    if handler:
+                        valve_times = handler.get_valve_times()
+                        for valve in valve_times:
+                            valve_data[valve] = {
+                                "open_time": None,
+                                "close_time": None,
+                                "elapsed": None,
+                            }
+
+                            open_time = valve_times[valve]["open_time"]
+                            close_time = valve_times[valve]["close_time"]
+
+                            if open_time is None or close_time is None:
+                                continue
+
+                            assert isinstance(open_time, datetime)
+                            assert isinstance(close_time, datetime)
+
+                            delta = close_time - open_time
+
+                            valve_data[valve] = {
+                                "open_time": open_time,
+                                "close_time": close_time,
+                                "elapsed": delta.total_seconds(),
+                            }
+
                     html_message = render_template(
                         template,
                         render_data=dict(
@@ -338,6 +366,7 @@ class Notifier:
                             log_css=formatter.get_style_defs(),
                             error=email_error,
                             images=True if len(images) > 0 else False,
+                            valve_data=valve_data,
                         ),
                     )
 
