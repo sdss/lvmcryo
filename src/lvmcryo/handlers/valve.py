@@ -328,10 +328,10 @@ class ValveHandler:
         if on:
             if thread_id is not None:
                 self.log.info(
-                    f"Valve {self.valve!r} was opened with timeout={timeout} "
+                    f"Valve {self.valve!r} was open with timeout={timeout} "
                     f"(thread_id={thread_id})."
                 )
             else:
-                self.log.info(f"Valve {self.valve!r} was opened.")
+                self.log.info(f"Valve {self.valve!r} was open.")
         else:
             self.log.info(f"Valve {self.valve!r} was closed.")
