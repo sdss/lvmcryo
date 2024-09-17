@@ -37,7 +37,7 @@ class NotifierConfig(BaseModel):
     """Configuration for the Notifier class."""
 
     slack_route: str
-    slack_channels: dict[NotificationLevel, str]
+    slack_channels: dict[NotificationLevel, str | list[str]]
     slack_mentions: dict[NotificationLevel, str | list[str]] = {}
     slack_from: str = "LN₂ Helper"
 
@@ -74,7 +74,7 @@ class Notifier:
         text: str | None = None,
         level: NotificationLevel = NotificationLevel.info,
         mentions: str | list[str] | None = None,
-        channel: str | None = None,
+        channels: str | list[str] | None = None,
     ):
         """Posts a message to Slack.
 
@@ -87,9 +87,10 @@ class Notifier:
             is sent.
         mentions
             A list of Slack users to mention in the message.
-        channel
+        channels
             The channel in the SSDS-V workspace where to send the message. Defaults
-            to the configuration value.
+            to the configuration value. Can be a string or a list of strings, in
+            which case the message is sent to all the channels in the list.
 
         """
 
@@ -97,7 +98,10 @@ class Notifier:
             return
 
         route = self.config.slack_route
-        channel = channel or self.config.slack_channels[level]
+
+        channels = channels or self.config.slack_channels[level]
+        if isinstance(channels, str):
+            channels = [channels]
 
         if mentions is None:
             if level in self.config.slack_mentions:
@@ -108,22 +112,24 @@ class Notifier:
         if isinstance(mentions, str):
             mentions = [mentions]
 
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.post(
-                route,
-                json={
-                    "channel": channel,
-                    "text": text,
-                    "username": self.config.slack_from,
-                    "mentions": mentions,
-                },
-            )
+        failed: bool = False
+        for channel in channels:
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                response = await client.post(
+                    route,
+                    json={
+                        "channel": channel,
+                        "text": text,
+                        "username": self.config.slack_from,
+                        "mentions": mentions,
+                    },
+                )
 
-        if response.status_code != 200:
-            warnings.warn(f"Failed sending message to Slack: {response.text}")
-            return False
+            if response.status_code != 200:
+                warnings.warn(f"Failed sending message to Slack: {response.text}")
+                failed = True
 
-        return True
+        return not failed
 
     def send_email(
         self,

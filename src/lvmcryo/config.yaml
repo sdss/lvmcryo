@@ -18,7 +18,9 @@ defaults:
 notifications:
   slack_channels:
     info: lvm-notifications
-    error: lvm-alerts
+    error:
+      - lvm-notifications
+      - lvm-alerts
   slack_mentions:
     error: '@here'
   email_recipients:
