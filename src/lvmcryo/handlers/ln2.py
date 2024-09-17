@@ -51,8 +51,8 @@ class EventDict(BaseModel):
     purge_complete: datetime.datetime | None = None
     fill_start: datetime.datetime | None = None
     fill_complete: datetime.datetime | None = None
-    failed: datetime.datetime | None = None
-    aborted: datetime.datetime | None = None
+    fail_time: datetime.datetime | None = None
+    abort_time: datetime.datetime | None = None
 
     @field_serializer("*")
     def serialize_dates(self, value: datetime.datetime | None) -> str | None:
@@ -499,12 +499,12 @@ class LN2Handler:
         """Sets the fail flag and event time."""
 
         self.failed = True
-        self.event_times.failed = get_now()
+        self.event_times.fail_time = get_now()
 
     def abort(self):
         """Aborts the fill."""
 
         self.aborted = True
-        self.event_times.aborted = get_now()
+        self.event_times.abort_time = get_now()
 
         self.fail()

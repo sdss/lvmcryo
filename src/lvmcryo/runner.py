@@ -42,11 +42,12 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     await handler.close_valves(only_active=False)
     await handler.clear()
 
+    handler.failed = True
     handler.aborted = True
-    handler.event_times.aborted = get_now()
 
-    handler.event_times.failed = get_now()
-    handler.event_times.aborted = get_now()
+    handler.event_times.fail_time = get_now()
+    handler.event_times.abort_time = get_now()
+    handler.event_times.end_time = get_now()
 
 
 async def ln2_runner(
@@ -281,8 +282,8 @@ async def post_fill_tasks(
                         "purge_complete": date_json(event_times.purge_complete),
                         "fill_start": date_json(event_times.fill_start),
                         "fill_complete": date_json(event_times.fill_complete),
-                        "fail_time": date_json(event_times.failed),
-                        "abort_time": date_json(event_times.aborted),
+                        "fail_time": date_json(event_times.fail_time),
+                        "abort_time": date_json(event_times.abort_time),
                         "failed": handler.failed,
                         "aborted": handler.aborted,
                         **db_extra_payload,
