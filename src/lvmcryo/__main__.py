@@ -443,6 +443,7 @@ async def ln2(
             json_handler.setLevel(5)
             json_handler.setFormatter(CustomJsonFormatter())
             log.addHandler(json_handler)
+
     elif config.notify:
         # If notifying, start a file logger, but to a temporary location. This is
         # just to be able to send the log body in a notification email.
@@ -463,6 +464,9 @@ async def ln2(
 
     if not config.notify:
         log.debug("Notifications are disabled and will not be emitted.")
+
+    if config_file is not None:
+        log.info(f"Using configuration file: {config_file!s}")
 
     if not config.no_prompt:
         stdout_console.print(f"Action {config.action.value} will run with:")
