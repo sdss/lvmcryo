@@ -455,8 +455,6 @@ class LN2Handler:
                 self.log.warning("Finishing purge/fill.")
                 await self.close_valves(only_active=True)
 
-            sshkeyboard.stop_listening()
-
         self.console.print(
             Panel(
                 Align(
