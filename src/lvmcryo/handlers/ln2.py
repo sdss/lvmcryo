@@ -466,7 +466,12 @@ class LN2Handler:
 
         # No need to store this task. It will be automatically done when
         # sshkeyboard.stop_listening() is called.
-        asyncio.create_task(sshkeyboard.listen_keyboard_manual(on_press=monitor_keys))
+        asyncio.create_task(
+            sshkeyboard.listen_keyboard_manual(
+                on_press=monitor_keys,
+                sleep=0.1,
+            )
+        )
 
     async def monitor_alerts(self):
         """Monitors the system alerts and aborts the fill if necessary."""
