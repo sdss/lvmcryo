@@ -25,7 +25,6 @@ import pygments
 from pydantic import BaseModel, ValidationError
 from pygments.formatters import HtmlFormatter
 from pygments.lexers.python import PythonTracebackLexer
-from pygments.lexers.rust import RustLexer
 
 from lvmopstools.devices.specs import spectrograph_pressures, spectrograph_temperatures
 
@@ -269,8 +268,7 @@ class Notifier:
                 fh.flush()
             log_filename = getattr(log, "log_filename", None)
             if log_filename:
-                log_data = open(log_filename, "r").read()
-                log_blob = pygments.highlight(log_data, RustLexer(), formatter)
+                log_blob = open(log_filename, "r").read()
 
         if post_to_slack:
             try:
