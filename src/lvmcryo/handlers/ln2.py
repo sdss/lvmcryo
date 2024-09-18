@@ -28,6 +28,7 @@ from lvmopstools.devices.specs import spectrograph_pressures, spectrograph_tempe
 from lvmopstools.devices.thermistors import read_thermistors
 
 from lvmcryo.config import ValveConfig, get_internal_config
+from lvmcryo.handlers.thermistor import ThermistorMonitor
 from lvmcryo.handlers.valve import ValveHandler
 from lvmcryo.tools import TimerProgressBar, cancel_task, get_fake_logger
 
@@ -323,6 +324,9 @@ class LN2Handler:
                 sshkeyboard.stop_listening()
                 await asyncio.sleep(1)
 
+            thermistor_monitor = ThermistorMonitor()  # Singleton
+            thermistor_monitor.stop()
+
     async def fill(
         self,
         cameras: list[str] | None = None,
@@ -401,6 +405,9 @@ class LN2Handler:
             if prompt:
                 sshkeyboard.stop_listening()
                 await asyncio.sleep(1)
+
+            thermistor_monitor = ThermistorMonitor()  # Singleton
+            thermistor_monitor.stop()
 
     def get_valve_times(
         self,
