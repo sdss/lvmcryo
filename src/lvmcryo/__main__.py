@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import pathlib
 import signal
 import warnings
@@ -690,13 +691,18 @@ async def ion(
                 f"{', '.join(failed_cameras)}"
             )
 
-        status = {
-            camera: data
-            for camera, data in status.items()
-            if camera not in failed_cameras
-        }
+        status_pretty = {}
+        for camera, data in status.items():
+            if camera not in failed_cameras:
+                pressure = data["pressure"]
+                status_pretty[camera] = {
+                    "pressure": float(f"{pressure:.2e}")  # Truncate to 2 decimals
+                    if pressure is not None
+                    else math.nan,
+                    "on": data["on"],
+                }
 
-        info_console.print(status, width=80)
+        info_console.print(status_pretty, width=80)
         return
 
     error: bool = False
