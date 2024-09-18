@@ -14,19 +14,19 @@
             <table style="border-spacing: 5px 10px; border: 0px solid">
                 <tr>
                     <td>Time at the start of the purge</td>
-                    <td style="padding-left: 20px">{{ event_times.purge_start.strftime('%Y-%m-%d %H:%M:%S') if event_times.purge_start }}</td>
+                    <td style="padding-left: 20px">{{ event_times.purge_start.strftime('%H:%M:%S') if event_times.purge_start }}</td>
                 </tr>
                 <tr>
                     <td>Time at the end of the purge</td>
-                    <td style="padding-left: 20px">{{ event_times.purge_complete.strftime('%Y-%m-%d %H:%M:%S') if event_times.purge_complete }}</td>
+                    <td style="padding-left: 20px">{{ event_times.purge_complete.strftime('%H:%M:%S') if event_times.purge_complete }}</td>
                 </tr>
                 <tr>
                     <td>Time at the start of the fill</td>
-                    <td style="padding-left: 20px">{{ event_times.fill_start.strftime('%Y-%m-%d %H:%M:%S') if event_times.fill_start }}</td>
+                    <td style="padding-left: 20px">{{ event_times.fill_start.strftime('%H:%M:%S') if event_times.fill_start }}</td>
                 </tr>
                 <tr>
                     <td>Time at the end of the fill</td>
-                    <td style="padding-left: 20px">{{ event_times.fill_complete.strftime('%Y-%m-%d %H:%M:%S') if event_times.fill_complete }}</td>
+                    <td style="padding-left: 20px">{{ event_times.fill_complete.strftime('%H:%M:%S') if event_times.fill_complete }}</td>
                 </tr>
             </table>
         </div>
@@ -48,7 +48,7 @@
                             {% for key, value in spec_data[cryostat].items() %}
                                 <td style="padding-left: 20px">
                                     {% if key == "ccd" or key == "ln2" %}
-                                        {{ value | round(2) }}</td>
+                                        {{ value | round(1) }}</td>
                                     {% else %}
                                         {{ "{:.2e}".format(value) }}
                                     {% endif %}
@@ -76,8 +76,8 @@
                     {% for valve, data in valve_data.items() %}
                         <tr>
                             <td style="text-align: center">{{ valve }}</td>
-                            <td style="padding-left: 20px">{{ data.open_time.strftime('%Y-%m-%d %H:%M:%S') if data.open_time }}</td>
-                            <td style="padding-left: 20px">{{ data.close_time.strftime('%Y-%m-%d %H:%M:%S') if data.close_time }}</td>
+                            <td style="padding-left: 20px">{{ data.open_time.strftime('%H:%M:%S') if data.open_time }}</td>
+                            <td style="padding-left: 20px">{{ data.close_time.strftime('%H:%M:%S') if data.close_time }}</td>
                             <td style="padding-left: 20px">{{ "{:.1f}".format(data.elapsed) if data.elapsed }}</td>
                         </tr>
                     {% endfor %}
@@ -89,17 +89,19 @@
 
         <div style="padding-top: 20px; font-weight: 600">Log stream</div>
         <hr/>
-        {% if log_blob %}
-            <div style="padding: 0px 20px; font-family: monospace !important">
-                {{ log_blob }}
-            </div>
+        {% if log_lines %}
+            <pre style="padding: 0px 20px; font-family: monospace !important">
+                {% for line in log_lines -%}
+                    {{ line }}
+                {%- endfor %}
+            </pre>
         {% else %}
             <div style="padding-top: 20px">Log stream was not available at the time of sending this email.</div>
         {% endif %}
 
         <div style="padding-top: 20px; font-weight: 600">Images</div>
         <hr/>
-        {% if spec_data %}
+        {% if has_images %}
         <div style="text-align:center;width:100%">
             <img src="cid:temps" style="width: 80%"/>
             <img src="cid:pressure" style="width: 80%"/>

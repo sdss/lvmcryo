@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 import smtplib
 import traceback
 import uuid
@@ -261,14 +262,20 @@ class Notifier:
 
         formatter = HtmlFormatter(style="default")
 
-        log_blob = None
+        log_lines = []
         if include_log:
             fh = getattr(log, "fh", None)
             if fh:
                 fh.flush()
             log_filename = getattr(log, "log_filename", None)
             if log_filename:
-                log_blob = open(log_filename, "r").read()
+                log_lines_raw = open(log_filename, "r").readlines()
+
+                # Remove the milliseconds from the log lines.
+                pattern = re.compile(r"^((?:\d+-?)+ (?:\d{2}:?)+),\d{3}( - )")
+                for line in log_lines_raw:
+                    new_line = pattern.sub(r"\1\2", line)
+                    log_lines.append(new_line)
 
         if post_to_slack:
             try:
@@ -355,15 +362,16 @@ class Notifier:
                                 "elapsed": delta.total_seconds(),
                             }
 
+                    has_images = any([image is not None for image in images.values()])
                     html_message = render_template(
                         template,
                         render_data=dict(
                             event_times=handler.event_times if handler else {},
                             spec_data=spec_data,
-                            log_blob=log_blob,
+                            log_lines=log_lines if len(log_lines) > 0 else None,
                             log_css=formatter.get_style_defs(),
                             error=email_error,
-                            images=True if len(images) > 0 else False,
+                            has_images=has_images,
                             valve_data=valve_data,
                         ),
                     )
