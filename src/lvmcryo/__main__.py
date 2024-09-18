@@ -351,7 +351,7 @@ async def ln2(
             "data collection has finished.",
             rich_help_panel="Logging",
         ),
-    ] = 30,
+    ] = 60,
 ):
     """Handles LN2 purges and fills.
 
