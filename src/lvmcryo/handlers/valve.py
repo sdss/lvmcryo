@@ -203,6 +203,19 @@ class ValveHandler:
         self.event = asyncio.Event()
         self.active: bool = False
 
+    async def check(self):
+        """Check the connection to the NPS."""
+
+        try:
+            info = await outlet_info(self.actor, self.outlet)
+            assert isinstance(info, dict), "Invalid outlet info."
+            assert not info["state"], "Valve is already open."
+        except Exception as err:
+            self.log.error(f"Error connecting to NPS: {err}")
+            return False
+
+        return True
+
     async def start_fill(
         self,
         min_open_time: float = 0.0,

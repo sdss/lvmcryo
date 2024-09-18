@@ -194,6 +194,15 @@ class LN2Handler:
             except Exception as err:
                 self.fail(f"Error checking O2 alarms: {err}")
 
+        # Check connection to the NPS outlets
+        try:
+            self.log.info("Checking connection to NPS outlets ...")
+            for valve in self.valve_handlers:
+                if not await self.valve_handlers[valve].check():
+                    raise RuntimeError(f"valve {valve} failed or did not reply.")
+        except Exception as err:
+            self.fail(f"Failed checking connection to NPS outlets: {err}")
+
         if max_temperature is not None:
             self.log.info("Checking LN2 temperatures ...")
             try:
