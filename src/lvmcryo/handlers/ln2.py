@@ -13,9 +13,8 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 
-from typing import Coroutine
+from typing import Coroutine, Literal, NoReturn, overload
 
-import httpx
 import sshkeyboard
 from pydantic import BaseModel, field_serializer
 from rich import box
@@ -30,7 +29,7 @@ from lvmopstools.devices.thermistors import read_thermistors
 from lvmcryo.config import ValveConfig, get_internal_config
 from lvmcryo.handlers.thermistor import ThermistorMonitor
 from lvmcryo.handlers.valve import ValveHandler
-from lvmcryo.tools import TimerProgressBar, cancel_task, get_fake_logger
+from lvmcryo.tools import TimerProgressBar, cancel_task, get_fake_logger, o2_alert
 
 
 def convert_datetime_to_iso_8601_with_z_suffix(dt: datetime.datetime) -> str:
@@ -117,7 +116,7 @@ class LN2Handler:
         self.valve_handlers: dict[str, ValveHandler] = {}
         for camera in self.cameras + [self.purge_valve]:
             if camera not in self.valve_info:
-                raise ValueError(f"Cannot find valve infor for {camera!r}.")
+                raise ValueError(f"Cannot find valve info for {camera!r}.")
 
             actor = self.valve_info[camera].actor
             outlet = self.valve_info[camera].outlet
@@ -141,6 +140,7 @@ class LN2Handler:
 
         self.failed: bool = False
         self.aborted: bool = False
+        self.error: str | None = None
 
     def get_specs(self):
         """Returns a list of spectrographs being handled."""
@@ -181,23 +181,34 @@ class LN2Handler:
 
         """
 
+        # Check O2 alarms.
+        if not self.alerts_route:
+            self.log.warning("No alerts route provided. Not checking O2 alarms.")
+        else:
+            try:
+                self.log.info("Checking for O2 alarms ...")
+                if await o2_alert(self.alerts_route):
+                    self.fail("O2 alarm detected.")
+                else:
+                    self.log.debug("No O2 alarms reported.")
+            except Exception as err:
+                self.fail(f"Error checking O2 alarms: {err}")
+
         if max_temperature is not None:
             self.log.info("Checking LN2 temperatures ...")
             try:
                 spec_temperatures = await spectrograph_temperatures()
             except Exception as err:
-                raise RuntimeError(f"Failed reading spectrograph temperatures: {err}")
+                self.fail(f"Failed reading spectrograph temperatures: {err}")
             else:
                 for camera in self.cameras:
                     ln2_temp = spec_temperatures[f"{camera}_ln2"]
 
                     if ln2_temp is None:
-                        self.fail()
-                        raise RuntimeError(f"Failed retrieving {camera!r} temperature.")
+                        self.fail(f"Failed retrieving {camera!r} temperature.")
 
                     if ln2_temp > max_temperature:
-                        self.fail()
-                        raise RuntimeError(
+                        self.fail(
                             f"LN2 temperature for camera {camera} is {ln2_temp:.1f} C "
                             f"which is above the maximum allowed temperature "
                             f"({max_temperature:.1f} C)."
@@ -208,18 +219,16 @@ class LN2Handler:
             try:
                 spec_pressures = await spectrograph_pressures()
             except Exception as err:
-                raise RuntimeError(f"Failed reading spectrograph pressures: {err}")
+                self.fail(f"Failed reading spectrograph pressures: {err}")
             else:
                 for camera in self.cameras:
                     pressure = spec_pressures[camera]
 
                     if pressure is None:
-                        self.fail()
-                        raise RuntimeError(f"Failed retrieving {camera!r} pressure.")
+                        self.fail(f"Failed retrieving {camera!r} pressure.")
 
                     if pressure > max_pressure:
-                        self.fail()
-                        raise RuntimeError(
+                        self.fail(
                             f"Pressure for camera {camera} is {pressure} Torr "
                             f"which is above the maximum allowed pressure "
                             f"({max_pressure} Torr)."
@@ -231,8 +240,7 @@ class LN2Handler:
             try:
                 thermistors = await read_thermistors()
             except Exception as err:
-                self.fail()
-                raise RuntimeError(f"Failed reading thermistors: {err}")
+                self.fail(f"Failed reading thermistors: {err}")
 
             for valve in self.valve_handlers:
                 thermistor_info = self.valve_info[valve].thermistor
@@ -246,12 +254,11 @@ class LN2Handler:
                     continue
 
                 if thermistor_info.channel is None:
-                    raise RuntimeError(f"Thermistor channel for {valve} not defined.")
+                    self.fail(f"Thermistor channel for {valve} not defined.")
 
                 thermistor_value = thermistors[thermistor_info.channel]
                 if thermistor_value is True:
-                    self.fail()
-                    raise RuntimeError(f"Thermistor for valve {valve} is active.")
+                    self.fail(f"Thermistor for valve {valve} is active.")
 
         self.log.info("All pre-fill checks passed.")
 
@@ -360,7 +367,7 @@ class LN2Handler:
 
         cameras = cameras or self.cameras
         if cameras is None or len(cameras) == 0:
-            raise RuntimeError("No cameras selected for filling.")
+            self.fail("No cameras selected for filling.")
 
         fill_tasks: list[Coroutine] = []
 
@@ -368,7 +375,7 @@ class LN2Handler:
             try:
                 valve_handler = self.valve_handlers[camera]
             except KeyError:
-                raise RuntimeError(f"Unable to find valve for camera {camera!r}.")
+                self.fail(f"Unable to find valve for camera {camera!r}.")
 
             fill_tasks.append(
                 valve_handler.start_fill(
@@ -445,11 +452,13 @@ class LN2Handler:
                 return
 
             if key == "x" or key == "X":
-                self.log.warning("Aborting.")
-
-                await self.close_valves(only_active=False)
-
-                self.abort()  # Prevent any future actions.
+                self.log.warning("Aborting now.")
+                # No not raise an alert here.
+                await self.abort(
+                    error="Aborted by user.",
+                    close_valves=True,
+                    raise_error=False,
+                )
 
             elif key == "enter":
                 self.log.warning("Finishing purge/fill.")
@@ -485,23 +494,29 @@ class LN2Handler:
             self.log.warning("No alerts route provided. Not monitoring alerts.")
             return
 
+        n_failed: int = 0
+
         while True:
             try:
-                async with httpx.AsyncClient(follow_redirects=True) as client:
-                    response = await client.get(self.alerts_route)
+                if await o2_alert(self.alerts_route):
+                    await self.abort(
+                        error="O2 alarm detected: closing valves and aborting.",
+                        close_valves=True,
+                        raise_error=False,
+                    )
 
-                if response.status_code != 200:
-                    self.log.warning(f"Error reading alerts: {response.text}")
-                else:
-                    alerts = response.json()
-                    if any(alerts["o2_room_alerts"].values()):
-                        self.log.error("O2 alarm: closing valves and aborting.")
-                        await self.close_valves(only_active=False)
-                        self.abort()
-                        return
+                n_failed = 0
 
             except Exception as ee:
                 self.log.warning(f"Error reading alerts: {ee}")
+                n_failed += 1
+
+            if n_failed >= 10:
+                await self.abort(
+                    error="Too many errors reading alerts. Aborting.",
+                    close_valves=True,
+                    raise_error=False,
+                )
 
             await asyncio.sleep(3)
 
@@ -531,16 +546,64 @@ class LN2Handler:
 
         self._alerts_monitor_task = await cancel_task(self._alerts_monitor_task)
 
-    def fail(self):
+    @overload
+    def fail(self, error: str, raise_error: bool = True) -> NoReturn: ...
+
+    @overload
+    def fail(self, error=None, raise_error: bool = True) -> None: ...
+
+    def fail(
+        self,
+        error: str | None = None,
+        raise_error: bool = True,
+    ) -> NoReturn | None:
         """Sets the fail flag and event time."""
 
         self.failed = True
         self.event_times.fail_time = get_now()
 
-    def abort(self):
+        if error:
+            self.error = error
+            self.log.error(error)
+            if raise_error:
+                raise RuntimeError(error)
+
+    @overload
+    async def abort(
+        self,
+        error: str | None,
+        close_valves: bool,
+        raise_error: bool = True,
+    ) -> NoReturn: ...
+
+    @overload
+    async def abort(
+        self,
+        error: str | None,
+        close_valves: bool,
+        raise_error: Literal[True] = True,
+    ) -> NoReturn: ...
+
+    @overload
+    async def abort(
+        self,
+        error: str | None,
+        close_valves: bool,
+        raise_error: Literal[False] = False,
+    ) -> None: ...
+
+    async def abort(
+        self,
+        error: str | None = None,
+        close_valves: bool = False,
+        raise_error: bool = True,
+    ) -> NoReturn | None:
         """Aborts the fill."""
 
         self.aborted = True
         self.event_times.abort_time = get_now()
 
-        self.fail()
+        if close_valves:
+            await self.close_valves(only_active=False)
+
+        self.fail(error=error or "Aborted.", raise_error=raise_error)

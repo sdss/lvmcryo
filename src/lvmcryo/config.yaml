@@ -24,14 +24,14 @@ notifications:
   slack_mentions:
     error: '@here'
   email_recipients:
-    - lvm-critical@sdss.org
+    - gallegoj@uw.edu
   email_server: smtp-01.lco.cl
   email_from: LVM LN2 system <lvm-ln2@lco.cl>
   email_reply_to: lvm-critical@sdss.org
 
 api_routes:
   slack: http://lvm-hub.lco.cl:8080/api/slack/message
-  alerts: http://lvm-hub.lco.cl:8080/api/alerts
+  alerts: http://localhost:8888/alerts
   fill_data: http://lvm-hub.lco.cl:8080/api/spectrographs/fills/measurements
   register_fill: http://lvm-hub.lco.cl:8080/api/spectrographs/fills/register
 

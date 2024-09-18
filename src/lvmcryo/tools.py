@@ -19,6 +19,7 @@ from logging import getLogger
 
 from typing import Any
 
+import httpx
 from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
@@ -231,3 +232,20 @@ def get_fake_logger():
     logger.disabled = True
 
     return logger
+
+
+async def o2_alert(route: str = "http://lvm-hub.lco.cl:8080/api/alerts"):
+    """Is there an active O2 alert?"""
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(route)
+
+        if response.status_code != 200:
+            raise RuntimeError(response.text)
+        else:
+            alerts = response.json()
+            return alerts["o2_alert"]
+
+    except Exception as ee:
+        raise RuntimeError(f"Error reading alerts: {ee}")

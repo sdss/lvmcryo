@@ -123,7 +123,7 @@ async def ln2_runner(
 
         if handler.failed or handler.aborted:
             await handler.clear()
-            raise RuntimeError("Purge failed or was aborted.")
+            raise RuntimeError(handler.error or "Purge failed or was aborted.")
 
     if config.action == Actions.purge_fill or config.action == Actions.fill:
         await notifier.post_to_slack("Starting fill.")
@@ -137,7 +137,7 @@ async def ln2_runner(
 
         if handler.failed or handler.aborted:
             await handler.clear()
-            raise RuntimeError("Fill failed or was aborted.")
+            raise RuntimeError(handler.error or "Fill failed or was aborted.")
 
     await notifier.post_to_slack(f"LN₂ `{action}` completed successfully.")
     await handler.clear()
