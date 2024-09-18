@@ -310,6 +310,7 @@ def generate_plots(
     data: polars.DataFrame,
     plot_path_root: str,
     transparent: bool = False,
+    include_ccd_tempratures: bool = False,
 ):
     """Generates measurement plots.
 
@@ -324,6 +325,8 @@ def generate_plots(
         Whether to save the plots with a transparent background. The colours will
         be adjusted to be visible on a dark background. The paths will be suffixed
         with ``_transparent``. No PDFs will be generated in this case.
+    include_ccd_tempratures
+        Whether to include CCD temperatures in the temperature plot.
 
     Returns
     -------
@@ -412,6 +415,9 @@ def generate_plots(
         )
 
         for spec, camera, sensor in itertools.product("123", "brz", ["ln2", "ccd"]):
+            if sensor == "ccd" and not include_ccd_tempratures:
+                continue
+
             column = f"temp_{camera}{spec}_{sensor}"
             if column not in temps.columns:
                 continue
