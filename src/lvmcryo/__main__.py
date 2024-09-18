@@ -141,6 +141,13 @@ async def ln2(
             show_default=False,
         ),
     ] = False,
+    clear_lock: Annotated[
+        bool,
+        Option(
+            "--clear-lock",
+            help="Clears the lock file if it exists before carrying out the action.",
+        ),
+    ] = False,
     #
     # Purge and fill options
     #
@@ -489,6 +496,10 @@ async def ln2(
         dry_run=config.dry_run,
         alerts_route=config.internal_config["api_routes"]["alerts"],
     )
+
+    if LOCKFILE.exists() and clear_lock:
+        log.warning("Lock file exists. Removing it because --clear-lock.")
+        LOCKFILE.unlink()
 
     try:
         with ensure_lock(LOCKFILE):
