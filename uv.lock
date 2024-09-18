@@ -491,7 +491,7 @@ dev = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = ">=3.1.2" },
-    { name = "lvmopstools", specifier = ">=0.3.7" },
+    { name = "lvmopstools", specifier = ">=0.3.9" },
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "polars", specifier = ">=1.7.1" },
     { name = "pydantic", specifier = ">=2.9.1" },
@@ -516,7 +516,7 @@ dev = [
 
 [[package]]
 name = "lvmopstools"
-version = "0.3.7"
+version = "0.3.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asyncudp" },
@@ -524,9 +524,9 @@ dependencies = [
     { name = "sdss-drift" },
     { name = "sdsstools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1d/82/4e09c72890da198734cbb5824661c5b36282f0574e843817a1b8aed0bd20/lvmopstools-0.3.7.tar.gz", hash = "sha256:55c98dee240efea7525ffdae053d54303cab8ee0f53cbdcce6759bd082f7d91f", size = 16559 }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/e6/f3564b7c852c37764ffd2c8be940afd0305517b97e524ede8204827205d0/lvmopstools-0.3.9.tar.gz", hash = "sha256:ca944f9a49417df733f7ee56df32548399894fbb1dcc54b488bb29c0c3e28637", size = 16788 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/07/8bc9be6adfa1cdf7673d44326280dd258adc04498867cdc103e21eb96b08/lvmopstools-0.3.7-py3-none-any.whl", hash = "sha256:9b87a470073db464808b74144b71624911fa7a4c941f660a94595af825c30cf4", size = 22528 },
+    { url = "https://files.pythonhosted.org/packages/03/83/5f6693bbd087dba8f01f548df2a76d221c633d3419b4b8905071701d78fb/lvmopstools-0.3.9-py3-none-any.whl", hash = "sha256:999c7667edd62e802a7a90f09d8e634324ff4b89d3330c3ae52e08499b562e09", size = 22815 },
 ]
 
 [[package]]
