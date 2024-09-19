@@ -295,7 +295,7 @@ class ValveHandler:
     async def finish(self, did_timeout: bool = False):
         """Finishes the fill, closing the valve."""
 
-        await self._set_state(False)
+        await self._set_state(False, did_timeout=did_timeout)
 
         self._monitor_task = await cancel_task(self._monitor_task)
         self._timeout_task = await cancel_task(self._timeout_task)
