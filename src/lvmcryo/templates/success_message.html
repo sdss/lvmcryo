@@ -34,6 +34,14 @@
                     <td>Time at the end of the fill</td>
                     <td style="padding-left: 20px">{{ event_times.fill_complete.strftime('%H:%M:%S') if event_times.fill_complete }}</td>
                 </tr>
+                <tr>
+                    <td>Time when the purge or fill failed</td>
+                    <td style="padding-left: 20px">{{ event_times.fail_time.strftime('%H:%M:%S') if event_times.fail_time }}</td>
+                </tr>
+                <tr>
+                    <td>Time when the purge or fill was aborted</td>
+                    <td style="padding-left: 20px">{{ event_times.abort_time.strftime('%H:%M:%S') if event_times.abort_time }}</td>
+                </tr>
             </table>
         </div>
 
