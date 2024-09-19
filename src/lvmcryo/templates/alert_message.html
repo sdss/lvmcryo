@@ -20,6 +20,12 @@
             At your earliest convenience please check the status of the LVM spectrograph system. You can access Grafana plots <a href="https://lvm-grafana.lco.cl">here</a>.
         </div>
 
+        {% if lvmweb_url %}
+            <div style="padding: 5px 0px">
+                Information about the fill can be found <href a="{{ lvmweb_url }}" />
+            </div>
+        {% endif %}
+
         <div style="padding-top: 20px; font-weight: 600">Events</div>
         <hr/>
         <div style="padding: 5px 20px">

@@ -602,6 +602,7 @@ async def ln2(
                         error_message=error,
                         handler=handler,
                         images=images,
+                        record_pk=record_pk,
                     )
 
                 elif config.email_level == NotificationLevel.info:
@@ -617,6 +618,7 @@ async def ln2(
                         handler=handler,
                         images=images,
                         post_to_slack=False,  # Already done.
+                        record_pk=record_pk,
                     )
 
             if error:

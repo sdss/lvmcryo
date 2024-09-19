@@ -50,6 +50,8 @@ class NotifierConfig(BaseModel):
     email_from: str
     email_reply_to: str | None = None
 
+    lvmweb_fill_url: str
+
 
 class Notifier:
     """Sends notifications over Slack or email."""
@@ -236,6 +238,7 @@ class Notifier:
         include_status: bool = True,
         include_log: bool = True,
         images: dict[str, pathlib.Path | None] = {},
+        record_pk: int | None = None,
     ):
         """Notifies a fill success or failure to the users."""
 
@@ -301,6 +304,14 @@ class Notifier:
 
             except Exception as err:
                 log.error(f"Failed posting to Slack: {err!r}")
+
+        lvmweb_url: str | None = None
+        if record_pk is not None:
+            lvmweb_url = self.config.lvmweb_fill_url.format(fill_id=record_pk)
+            await self.post_to_slack(
+                "Information about the fill can be found at "
+                f"<{lvmweb_url}|this link>."
+            )
 
         if send_email:
             subject: str = (
@@ -373,6 +384,7 @@ class Notifier:
                             error=email_error,
                             has_images=has_images,
                             valve_data=valve_data,
+                            lvmweb_url=lvmweb_url,
                         ),
                     )
 
