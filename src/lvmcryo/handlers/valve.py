@@ -202,6 +202,7 @@ class ValveHandler:
 
         self.event = asyncio.Event()
         self.active: bool = False
+        self.timed_out: bool = False
 
     async def check(self):
         """Check the connection to the NPS."""
@@ -289,9 +290,9 @@ class ValveHandler:
         """Schedules a task to cancel the fill after a timeout."""
 
         await asyncio.sleep(timeout)
-        await self.finish()
+        await self.finish(did_timeout=True)
 
-    async def finish(self):
+    async def finish(self, did_timeout: bool = False):
         """Finishes the fill, closing the valve."""
 
         await self._set_state(False)
@@ -313,6 +314,7 @@ class ValveHandler:
         on: bool,
         use_script: bool = True,
         timeout: float | None = None,
+        did_timeout: bool = False,
     ):
         """Sets the state of the valve.
 
@@ -325,6 +327,9 @@ class ValveHandler:
             after which the valve will be closed.
         timeout
             Maximum open valve time.
+        did_timeout
+            Whether the valve was closed because of a timeout. Only affects the
+            log message.
 
         """
 
@@ -358,5 +363,10 @@ class ValveHandler:
             self.open_time = datetime.now(UTC)
 
         else:
-            self.log.info(f"Valve {self.valve!r} was closed.")
+            if did_timeout:
+                self.log.warning(f"Valve {self.valve!r} was closed due to timeout.")
+                self.timed_out = True
+            else:
+                self.log.info(f"Valve {self.valve!r} was closed.")
+
             self.close_time = datetime.now(UTC)

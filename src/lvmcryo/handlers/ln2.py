@@ -428,10 +428,10 @@ class LN2Handler:
     def get_valve_times(
         self,
         as_string: bool = False,
-    ) -> dict[str, dict[str, str | datetime.datetime | None]]:
+    ) -> dict[str, dict[str, str | datetime.datetime | bool | None]]:
         """Returns a dictionary of open/close times for the valves."""
 
-        result: dict[str, dict[str, str | datetime.datetime | None]] = {}
+        result: dict[str, dict[str, str | datetime.datetime | bool | None]] = {}
 
         for valve in self.valve_handlers:
             result[valve] = {"open_time": None, "close_time": None}
@@ -448,6 +448,8 @@ class LN2Handler:
                 result[valve]["close_time"] = (
                     close_time.isoformat() if as_string else close_time
                 )
+
+            result[valve]["timed_out"] = self.valve_handlers[valve].timed_out
 
         return result
 

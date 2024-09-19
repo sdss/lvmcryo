@@ -98,6 +98,7 @@
                         <th>Open</th>
                         <th>Closed</th>
                         <th>Elapsed</th>
+                        <th>Timed out?</th>
                     </tr>
                     {% for valve, data in valve_data.items() %}
                         <tr>
@@ -105,6 +106,7 @@
                             <td style="padding-left: 20px">{{ data.open_time.strftime('%H:%M:%S') if data.open_time }}</td>
                             <td style="padding-left: 20px">{{ data.close_time.strftime('%H:%M:%S') if data.close_time }}</td>
                             <td style="padding-left: 20px">{{ "{:.1f}".format(data.elapsed) if data.elapsed }}</td>
+                            <td style="padding-left: 20px">{{ "Y" if data.timed_out else "" }}</td>
                         </tr>
                     {% endfor %}
                 </table>

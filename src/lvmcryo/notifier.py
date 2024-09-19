@@ -354,6 +354,7 @@ class Notifier:
                                 "open_time": None,
                                 "close_time": None,
                                 "elapsed": None,
+                                "timed_out": False,
                             }
 
                             open_time = valve_times[valve]["open_time"]
@@ -371,6 +372,7 @@ class Notifier:
                                 "open_time": open_time,
                                 "close_time": close_time,
                                 "elapsed": delta.total_seconds(),
+                                "timed_out": valve_times[valve]["timed_out"],
                             }
 
                     has_images = any([image is not None for image in images.values()])
