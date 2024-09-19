@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.2 - 2024-09-18
+
+### 🚀 New
+
+* Report the link to the LMV Web page for the fill in Slack and email.
+
+### ✨ Improved
+
+* Report if a valve closed due to timeout.
+
+### 🔧 Fixed
+
+* Include extra event times in the success template.
+
+
 ## 0.1.1 - 2024-09-18
 
 ### 🚀 New
