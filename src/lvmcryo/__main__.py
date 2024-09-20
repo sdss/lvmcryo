@@ -26,6 +26,7 @@ from typer.core import TyperGroup
 
 from lvmcryo.config import Actions, Config, InteractiveMode, NotificationLevel
 from lvmcryo.runner import post_fill_tasks
+from lvmcryo.tools import add_json_handler
 
 
 LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
@@ -374,7 +375,7 @@ async def ln2(
 
     from rich.prompt import Confirm
 
-    from sdsstools.logger import CustomJsonFormatter, get_logger
+    from sdsstools.logger import get_logger
 
     from lvmcryo.handlers.ln2 import LN2Handler, get_now
     from lvmcryo.notifier import Notifier
@@ -447,16 +448,16 @@ async def ln2(
 
         if write_json:
             json_path = config.log_path.with_suffix(".json")
-            json_handler = FileHandler(str(json_path), mode="w")
-            json_handler.setLevel(5)
-            json_handler.setFormatter(CustomJsonFormatter())
-            log.addHandler(json_handler)
+            add_json_handler(log, json_path)
 
-    elif config.notify:
-        # If notifying, start a file logger, but to a temporary location. This is
-        # just to be able to send the log body in a notification email.
+    else:
+        # We're still creating log files, but to a temporary location. This is
+        # just to be able to send the log body in a notification email and include
+        # it when loading the DB.
         temp_file = NamedTemporaryFile()
         log.start_file_logger(temp_file.name)
+        json_path = pathlib.Path(temp_file.name).with_suffix(".json")
+        json_handler = add_json_handler(log, json_path)
 
     if verbose:
         log.sh.setLevel(5)
@@ -578,7 +579,7 @@ async def ln2(
                     "error": str(error) if error else None,
                     "action": action.value,
                     "log_file": str(config.log_path) if config.log_path else None,
-                    "json_file": str(json_path) if json_path else None,
+                    "json_file": str(json_path) if json_path and write_json else None,
                     "log_data": log_data,
                     "configuration": configuration_json,
                     "valve_times": handler.get_valve_times(as_string=True),

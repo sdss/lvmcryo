@@ -5,6 +5,7 @@
 ### ✨ Improved
 
 * Do not report a thermistor warning every interval.
+* Always include JSON log payload when loading the DB.
 
 ### 🔧 Fixed
 

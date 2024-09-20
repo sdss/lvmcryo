@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import pathlib
 import time
@@ -24,6 +25,7 @@ from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
 
+from sdsstools.logger import CustomJsonFormatter
 from sdsstools.utils import run_in_executor
 
 
@@ -249,3 +251,14 @@ async def o2_alert(route: str = "http://lvm-hub.lco.cl:8080/api/alerts"):
 
     except Exception as ee:
         raise RuntimeError(f"Error reading alerts: {ee}")
+
+
+def add_json_handler(log: logging.Logger, json_path: os.PathLike | pathlib.Path):
+    """Adds a JSON handler to a logger."""
+
+    json_handler = logging.FileHandler(str(json_path), mode="w")
+    json_handler.setLevel(5)
+    json_handler.setFormatter(CustomJsonFormatter())
+    log.addHandler(json_handler)
+
+    return json_handler
