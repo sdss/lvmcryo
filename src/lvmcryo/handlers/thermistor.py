@@ -164,6 +164,9 @@ class ThermistorHandler:
         # is not providing new data.
         alert_seconds = int(10 * self.monitoring_interval)
 
+        # Number of seconds since the last issued warnings.
+        last_warned = -1
+
         while True:
             await asyncio.sleep(self.monitoring_interval)
 
@@ -239,10 +242,16 @@ class ThermistorHandler:
                 never_seen = last_seen <= 0 and elapsed_running > alert_seconds
 
                 if is_late or never_seen:
-                    self.log.warning(
-                        f"No data from the thermistor {self.channel} "
-                        f"in the last {last_seen_elapsed} seconds."
-                    )
+                    # Issue a warning the first time this happens
+                    # and then every 30 seconds.
+                    if last_warned == -1 or last_warned > 30:
+                        self.log.warning(
+                            f"No data from the thermistor {self.channel} "
+                            f"in the last {last_seen_elapsed:.1f} seconds."
+                        )
+                        last_warned = 0
+                    else:
+                        last_warned += self.monitoring_interval
 
         self.valve_handler.log.debug(
             f"Thermistor {self.channel} has been active for more than "
