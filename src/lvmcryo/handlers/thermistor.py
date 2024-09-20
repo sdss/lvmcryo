@@ -198,7 +198,7 @@ class ThermistorHandler:
                                         "before closing the valve."
                                     )
                                 else:
-                                    self.log.info(
+                                    self.log.warning(
                                         f"Thermistor {self.channel!r} is active but "
                                         "the minimum open time has not been reached."
                                     )
