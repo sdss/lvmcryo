@@ -137,7 +137,7 @@ class ThermistorHandler:
         # the valve will close on a timeout.
         if self.disabled:
             self.log.warning(
-                f"The thermistor for valve {self.valve_handler.valve} is disabled. "
+                f"The thermistor for valve {self.valve_handler.valve!r} is disabled. "
                 "Will not monitor it."
             )
             return
@@ -146,7 +146,7 @@ class ThermistorHandler:
         start_time = time()
         self.thermistor_monitor.start()
 
-        self.valve_handler.log.debug(f"Starting to monitor thermistor {self.channel}.")
+        self.valve_handler.log.debug(f"Started to monitor thermistor {self.channel!r}.")
 
         # Unix time at which we saw the last data point.
         last_seen: float = 0
@@ -193,13 +193,13 @@ class ThermistorHandler:
 
                                 if elapsed_running > self.min_open_time:
                                     self.log.info(
-                                        f"Thermistor {self.channel} is active. Waiting "
-                                        f"{self.required_active_time} seconds before "
-                                        "closing the valve."
+                                        f"Thermistor {self.channel!r} is active. "
+                                        f"Waiting {self.required_active_time} seconds "
+                                        "before closing the valve."
                                     )
                                 else:
                                     self.log.info(
-                                        f"Thermistor {self.channel} is active but "
+                                        f"Thermistor {self.channel!r} is active but "
                                         "the minimum open time has not been reached."
                                     )
 
@@ -225,8 +225,8 @@ class ThermistorHandler:
                             # became inactive.
                             if active_start_time > 0:
                                 self.log.warning(
-                                    f"Thermistor {self.channel} is no longer active. "
-                                    "Resetting counters."
+                                    f"Thermistor {self.channel!r} is no "
+                                    "longer active. Resetting counters."
                                 )
 
                             active_start_time = 0
@@ -246,7 +246,7 @@ class ThermistorHandler:
                     # and then every 30 seconds.
                     if last_warned == -1 or last_warned > 30:
                         self.log.warning(
-                            f"No data from the thermistor {self.channel} "
+                            f"No data from the thermistor {self.channel!r} "
                             f"in the last {last_seen_elapsed:.1f} seconds."
                         )
                         last_warned = 0
@@ -254,10 +254,10 @@ class ThermistorHandler:
                         last_warned += self.monitoring_interval
 
         self.valve_handler.log.debug(
-            f"Thermistor {self.channel} has been active for more than "
+            f"Thermistor {self.channel!r} has been active for more than "
             f"{elapsed_active:.1f} seconds. Stopping thermistor monitoring."
         )
 
         if self.close_valve:
-            self.valve_handler.log.debug(f"Closing valve {self.valve_handler.valve}.")
+            self.valve_handler.log.debug(f"Closing valve {self.valve_handler.valve!r}.")
             await self.valve_handler.finish()
