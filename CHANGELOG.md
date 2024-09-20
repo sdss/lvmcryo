@@ -6,6 +6,10 @@
 
 * Do not report a thermistor warning every interval.
 
+### 🔧 Fixed
+
+* Fix link to LVM Web in email templates.
+
 
 ## 0.1.2 - 2024-09-18
 
