@@ -255,9 +255,12 @@ class ThermistorHandler:
 
         self.valve_handler.log.debug(
             f"Thermistor {self.channel!r} has been active for more than "
-            f"{elapsed_active:.1f} seconds. Stopping thermistor monitoring."
+            f"{elapsed_active:.1f} seconds."
         )
 
         if self.close_valve:
-            self.valve_handler.log.debug(f"Closing valve {self.valve_handler.valve!r}.")
+            self.valve_handler.log.debug(
+                f"Closing valve {self.valve_handler.valve!r} "
+                "due to thermistor feedback."
+            )
             await self.valve_handler.finish()
