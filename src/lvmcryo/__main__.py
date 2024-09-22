@@ -448,7 +448,7 @@ async def ln2(
 
         if write_json:
             json_path = config.log_path.with_suffix(".json")
-            add_json_handler(log, json_path)
+            json_handler = add_json_handler(log, json_path)
 
     else:
         # We're still creating log files, but to a temporary location. This is

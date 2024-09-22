@@ -1,5 +1,10 @@
 # Changelog
 
+### 🔧 Fixed
+
+* Fix JSON log not being saved to the database in some cases.
+
+
 ## 0.1.3 - 2024-09-20
 
 ### ✨ Improved
