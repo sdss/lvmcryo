@@ -1,5 +1,11 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Add `version` to `Config`.
+
 ### 🔧 Fixed
 
 * Fix JSON log not being saved to the database in some cases.

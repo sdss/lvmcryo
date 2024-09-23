@@ -131,6 +131,8 @@ class Config(BaseModel):
     data_path: pathlib.Path | None = None
     data_extra_time: float = 0.0
 
+    version: str | None = None
+
     valve_info: Annotated[dict[str, ValveConfig], ExcludedField] = {}
 
     config_file: Annotated[pathlib.Path | None, ExcludedField] = None

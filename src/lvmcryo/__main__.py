@@ -24,6 +24,7 @@ from rich.console import Console
 from typer import Argument, Option
 from typer.core import TyperGroup
 
+from lvmcryo import __version__
 from lvmcryo.config import Actions, Config, InteractiveMode, NotificationLevel
 from lvmcryo.runner import post_fill_tasks
 from lvmcryo.tools import add_json_handler
@@ -438,6 +439,7 @@ async def ln2(
             write_data=write_data,
             data_path=data_path,
             data_extra_time=data_extra_time,
+            version=__version__,
         )
     except ValueError as err:
         err_console.print(f"[red]Error parsing configuration:[/] {err}")
