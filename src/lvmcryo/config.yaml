@@ -28,7 +28,7 @@ notifications:
   email_server: smtp-01.lco.cl
   email_from: LVM LN2 system <lvm-ln2@lco.cl>
   email_reply_to: lvm-critical@sdss.org
-  lvmweb_fill_url: http://localhost:8080/lvmweb/fills/{fill_id}
+  lvmweb_fill_url: https://lvm-web.lco.cl/fills/{fill_id}
 
 api_routes:
   slack: http://lvm-hub.lco.cl:8080/api/slack/message
