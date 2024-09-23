@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import warnings
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from time import time
 
 from typing import TYPE_CHECKING, TypedDict
@@ -129,6 +130,7 @@ class ThermistorHandler:
         self.log = self.valve_handler.log
 
         self.thermistor_monitor = ThermistorMonitor(interval=self.monitoring_interval)
+        self.first_active: datetime | None = None
 
     async def start_monitoring(self):
         """Monitors the thermistor and potentially closes the valve."""
@@ -205,6 +207,9 @@ class ThermistorHandler:
 
                             # Time the thermistor has been active.
                             elapsed_active = time() - active_start_time
+                            if elapsed_active > self.required_active_time:
+                                if not self.first_active:
+                                    self.first_active = datetime.now(UTC)
 
                             # We require the time we have been running to
                             # be > min_open_time and the the time the thermistor

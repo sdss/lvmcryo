@@ -434,7 +434,12 @@ class LN2Handler:
         result: dict[str, dict[str, str | datetime.datetime | bool | None]] = {}
 
         for valve in self.valve_handlers:
-            result[valve] = {"open_time": None, "close_time": None}
+            result[valve] = {
+                "open_time": None,
+                "close_time": None,
+                "timed_out": False,
+                "thermistor_first_active": None,
+            }
 
             open_time = self.valve_handlers[valve].open_time
             close_time = self.valve_handlers[valve].close_time
@@ -447,6 +452,14 @@ class LN2Handler:
             if close_time is not None:
                 result[valve]["close_time"] = (
                     close_time.isoformat() if as_string else close_time
+                )
+
+            thermistor = self.valve_handlers[valve].thermistor
+            if thermistor is not None and thermistor.first_active is not None:
+                result[valve]["thermistor_first_active"] = (
+                    thermistor.first_active.isoformat()
+                    if as_string
+                    else thermistor.first_active
                 )
 
             result[valve]["timed_out"] = self.valve_handlers[valve].timed_out

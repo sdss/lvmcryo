@@ -204,6 +204,8 @@ class ValveHandler:
         self.active: bool = False
         self.timed_out: bool = False
 
+        self.thermistor: ThermistorHandler | None = None
+
     async def check(self):
         """Check the connection to the NPS."""
 
@@ -255,13 +257,13 @@ class ValveHandler:
 
         if use_thermistor and self.thermistor_info:
             thermistor_channel = self.thermistor_info.pop("channel", self.valve)
-            thermistor = ThermistorHandler(
+            self.thermistor = ThermistorHandler(
                 self,
                 channel=thermistor_channel,
                 **self.thermistor_info,
             )
-            thermistor.min_open_time = min_open_time
-            self._monitor_task = asyncio.create_task(thermistor.start_monitoring())
+            self.thermistor.min_open_time = min_open_time
+            self._monitor_task = asyncio.create_task(self.thermistor.start_monitoring())
 
         if self.progress_bar:
             if self.valve.lower() == "purge":
