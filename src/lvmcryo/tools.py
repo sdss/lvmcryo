@@ -236,7 +236,7 @@ def get_fake_logger():
     return logger
 
 
-async def o2_alert(route: str = "http://lvm-hub.lco.cl:8080/api/alerts"):
+async def o2_alert(route: str = "http://lvm-hub.lco.cl:8090/api/alerts"):
     """Is there an active O2 alert?"""
 
     try:

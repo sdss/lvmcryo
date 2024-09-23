@@ -102,7 +102,7 @@ class LN2Handler:
     log: logging.Logger = field(default_factory=get_fake_logger)
     valve_info: dict[str, ValveConfig] = field(default_factory=get_valve_info)
     dry_run: bool = False
-    alerts_route: str | None = "http://lvm-hub.lco.cl:8080/api/alerts"
+    alerts_route: str | None = "http://lvm-hub.lco.cl:8090/api/alerts"
 
     def __post_init__(self):
         if self.interactive:

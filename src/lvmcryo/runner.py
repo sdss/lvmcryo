@@ -150,10 +150,10 @@ async def post_fill_tasks(
     write_data: bool = False,
     data_path: str | pathlib.Path | None = None,
     data_extra_time: float | None = None,
-    api_data_route: str = "http://lvm-hub.lco.cl:8080/api/spectrographs/fills/measurements",
+    api_data_route: str = "http://lvm-hub.lco.cl:8090/api/spectrographs/fills/measurements",
     generate_data_plots: bool = True,
     write_to_db: bool = False,
-    api_db_route: str = "http://lvm-hub.lco.cl:8080/api/spectrographs/fills/register",
+    api_db_route: str = "http://lvm-hub.lco.cl:8090/api/spectrographs/fills/register",
     db_extra_payload: dict[str, Any] = {},
 ) -> tuple[int | None, dict[str, pathlib.Path]]:
     """Runs the post-fill tasks.
