@@ -571,6 +571,7 @@ async def ln2(
             }
             record_pk, plot_paths = await post_fill_tasks(
                 handler,
+                notifier=notifier,
                 write_data=config.write_data,
                 data_path=config.data_path,
                 data_extra_time=config.data_extra_time if error is None else None,

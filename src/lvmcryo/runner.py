@@ -147,6 +147,7 @@ async def ln2_runner(
 
 async def post_fill_tasks(
     handler: LN2Handler,
+    notifier: Notifier | None = None,
     write_data: bool = False,
     data_path: str | pathlib.Path | None = None,
     data_extra_time: float | None = None,
@@ -214,6 +215,13 @@ async def post_fill_tasks(
     if write_data and event_times.start_time and event_times.end_time:
         if data_extra_time:
             log.info(f"Waiting {data_extra_time} seconds before collecting data.")
+
+            if notifier is not None:
+                await notifier.post_to_slack(
+                    f"Fill notifications will be delayed {data_extra_time:.0f} "
+                    "seconds while collecting post-fill data."
+                )
+
             await asyncio.sleep(data_extra_time)
 
         if data_path is None:
