@@ -354,11 +354,13 @@ class Notifier:
                                 "open_time": None,
                                 "close_time": None,
                                 "elapsed": None,
+                                "thermistor_after": None,
                                 "timed_out": False,
                             }
 
                             open_time = valve_times[valve]["open_time"]
                             close_time = valve_times[valve]["close_time"]
+                            th_first = valve_times[valve]["thermistor_first_active"]
 
                             if open_time is None or close_time is None:
                                 continue
@@ -368,10 +370,17 @@ class Notifier:
 
                             delta = close_time - open_time
 
+                            th_after: float | None = None
+                            if th_first is not None:
+                                assert isinstance(th_first, datetime)
+                                delta_first = th_first - open_time
+                                th_after = delta_first.total_seconds()
+
                             valve_data[valve] = {
                                 "open_time": open_time,
                                 "close_time": close_time,
                                 "elapsed": delta.total_seconds(),
+                                "thermistor_after": th_after,
                                 "timed_out": valve_times[valve]["timed_out"],
                             }
 
