@@ -5,6 +5,10 @@
 ### ✨ Improved
 
 * Add `version` to `Config`.
+* Various logging improvements.
+* Updated internal configuration file with new `lvmapi` port. Update URL routes.
+* Add the time at which the thermistor first activated to the valve times written to the database and email.
+* Issue notification in Slack during post-fill when waiting extra time to collect data.
 
 ### 🔧 Fixed
 
