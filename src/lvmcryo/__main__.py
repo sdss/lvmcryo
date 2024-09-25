@@ -581,7 +581,7 @@ async def ln2(
                 write_to_db=True,
                 api_db_route=config.internal_config["api_routes"]["register_fill"],
                 db_extra_payload={
-                    "error": str(error) if error else None,
+                    "error": str(error) if error is not None else None,
                     "action": action.value,
                     "log_file": str(config.log_path) if config.log_path else None,
                     "json_file": str(json_path) if json_path and write_json else None,
