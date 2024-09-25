@@ -537,13 +537,14 @@ async def ln2(
         raise typer.Exit(1)
 
     except Exception as err:
-        log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
-
         # Log the traceback to file but do not print.
         orig_sh_level = log.sh.level
         log.sh.setLevel(1000)
         log.exception(f"Error during {action.value}.", exc_info=err)
         log.sh.setLevel(orig_sh_level)
+
+        # Fail the action.
+        handler.failed = True
 
         error = err
         if with_traceback:
@@ -552,12 +553,13 @@ async def ln2(
         raise typer.Exit(1)
 
     else:
-        log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
         log.info(f"LN2 {action.value} completed successfully.")
 
     finally:
         handler.event_times.end_time = get_now()
         await handler.clear()
+
+        log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
 
         if not skip_finally:
             if json_handler and json_path:
