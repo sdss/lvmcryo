@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### 🔧 Fixed
+
+* Add additional error handling for non-fatal errors during notifications.
+
+
 ## 0.1.4 - 2024-09-24
 
 ### ✨ Improved

@@ -120,19 +120,24 @@ class Notifier:
 
         failed: bool = False
         for channel in channels:
-            async with httpx.AsyncClient(follow_redirects=True) as client:
-                response = await client.post(
-                    route,
-                    json={
-                        "channel": channel,
-                        "text": text,
-                        "username": self.config.slack_from,
-                        "mentions": mentions,
-                    },
-                )
+            try:
+                async with httpx.AsyncClient(follow_redirects=True) as client:
+                    response = await client.post(
+                        route,
+                        json={
+                            "channel": channel,
+                            "text": text,
+                            "username": self.config.slack_from,
+                            "mentions": mentions,
+                        },
+                    )
 
-            if response.status_code != 200:
-                warnings.warn(f"Failed sending message to Slack: {response.text}")
+                if response.status_code != 200:
+                    warnings.warn(f"Failed sending message to Slack: {response.text}")
+                    failed = True
+
+            except Exception as ee:
+                warnings.warn(f"Failed sending message to Slack: {ee}")
                 failed = True
 
         return not failed
@@ -280,6 +285,10 @@ class Notifier:
                     new_line = pattern.sub(r"\1\2", line)
                     log_lines.append(new_line)
 
+        lvmweb_url: str | None = None
+        if record_pk is not None:
+            lvmweb_url = self.config.lvmweb_fill_url.format(fill_id=record_pk)
+
         if post_to_slack:
             try:
                 if success:
@@ -302,16 +311,14 @@ class Notifier:
                     level=NotificationLevel.error,
                 )
 
+                if lvmweb_url:
+                    await self.post_to_slack(
+                        "Information about the fill can be found at "
+                        f"<{lvmweb_url}|this link>."
+                    )
+
             except Exception as err:
                 log.error(f"Failed posting to Slack: {err!r}")
-
-        lvmweb_url: str | None = None
-        if record_pk is not None:
-            lvmweb_url = self.config.lvmweb_fill_url.format(fill_id=record_pk)
-            await self.post_to_slack(
-                "Information about the fill can be found at "
-                f"<{lvmweb_url}|this link>."
-            )
 
         if send_email:
             subject: str = (
@@ -402,6 +409,7 @@ class Notifier:
                 except Exception as err:
                     log.error(f"Failed rendering template: {err!r}")
                     log.warning("Sending a plain text message.")
+                    html_message = None
 
                 self.send_email(
                     subject=subject,
