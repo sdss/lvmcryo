@@ -252,7 +252,7 @@ async def post_fill_tasks(
 
                 data_path.parent.mkdir(parents=True, exist_ok=True)
                 data.write_parquet(data_path)
-                log.debug(f"Fill data written to {data_path!r}")
+                log.debug(f"Fill data written to {data_path!s}")
 
                 if generate_data_plots:
                     log.debug("Generating plots.")
@@ -273,9 +273,6 @@ async def post_fill_tasks(
 
         except Exception as ee:
             log.error(f"Failed to retrieve fill data from API: {ee!r}")
-
-        else:
-            log.debug(f"Fill data written to {data_path}.")
 
     if write_to_db and api_db_route:
         try:

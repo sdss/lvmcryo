@@ -288,6 +288,10 @@ class Notifier:
         lvmweb_url: str | None = None
         if record_pk is not None:
             lvmweb_url = self.config.lvmweb_fill_url.format(fill_id=record_pk)
+            await self.post_to_slack(
+                "Information about the fill can be found at "
+                f"<{lvmweb_url}|this link>."
+            )
 
         if post_to_slack:
             try:
@@ -310,12 +314,6 @@ class Notifier:
                     text=slack_message,
                     level=NotificationLevel.error,
                 )
-
-                if lvmweb_url:
-                    await self.post_to_slack(
-                        "Information about the fill can be found at "
-                        f"<{lvmweb_url}|this link>."
-                    )
 
             except Exception as err:
                 log.error(f"Failed posting to Slack: {err!r}")
