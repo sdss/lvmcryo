@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.6 - 2024-09-26
+
+### ✨ Improved
+
+* Explicitely fail the action on error.
+* Preserve empty string in error field in the database.
+
+### 🔧 Fixed
+
+* Always post the fill link in Slack and email.
+
 ## 0.1.5 - 2024-09-25
 
 ### 🔧 Fixed
