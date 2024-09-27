@@ -482,7 +482,7 @@ def generate_plots(
                 colour = colours.get(camera, "w" if transparent else "k")
                 linestyle = linestyles.get(spec, "-")
             else:
-                colour = "w" if transparent else "k"
+                colour = "g" if transparent else "k"
                 linestyle = "-"
 
             ax.plot(
