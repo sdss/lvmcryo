@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Improve handling of keyboard interrupt during post-processing.
+
+
 ## 0.1.6 - 2024-09-26
 
 ### ✨ Improved

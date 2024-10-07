@@ -13,6 +13,7 @@ import itertools
 import logging
 import pathlib
 import signal
+import sys
 from datetime import datetime, timedelta
 
 from typing import TYPE_CHECKING, Any
@@ -48,6 +49,9 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     handler.event_times.fail_time = get_now()
     handler.event_times.abort_time = get_now()
     handler.event_times.end_time = get_now()
+
+    log.error("Exiting now. Not data or notifications will be sent.")
+    sys.exit(1)
 
 
 async def ln2_runner(
@@ -214,15 +218,21 @@ async def post_fill_tasks(
 
     if write_data and event_times.start_time and event_times.end_time:
         if data_extra_time:
-            log.info(f"Waiting {data_extra_time} seconds before collecting data.")
-
-            if notifier is not None:
-                await notifier.post_to_slack(
-                    f"Fill notifications will be delayed {data_extra_time:.0f} "
-                    "seconds while collecting post-fill data."
+            if handler.aborted or handler.failed:
+                log.warning(
+                    "Fill was aborted or failed. Not waiting "
+                    "additional time to collect data."
                 )
+            else:
+                log.info(f"Waiting {data_extra_time} seconds before collecting data.")
 
-            await asyncio.sleep(data_extra_time)
+                if notifier is not None:
+                    await notifier.post_to_slack(
+                        f"Fill notifications will be delayed {data_extra_time:.0f} "
+                        "seconds while collecting post-fill data."
+                    )
+
+                await asyncio.sleep(data_extra_time)
 
         if data_path is None:
             data_path = pathlib.Path.cwd() / "fill_data.parquet"

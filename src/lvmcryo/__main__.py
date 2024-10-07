@@ -556,6 +556,10 @@ async def ln2(
         log.info(f"LN2 {action.value} completed successfully.")
 
     finally:
+        # At this point all the valves are closed so we can remove the signal handlers.
+        for signame in ("SIGINT", "SIGTERM"):
+            asyncio.get_running_loop().remove_signal_handler(getattr(signal, signame))
+
         handler.event_times.end_time = get_now()
         await handler.clear()
 
