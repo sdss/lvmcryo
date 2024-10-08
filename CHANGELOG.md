@@ -10,6 +10,7 @@
 ### ✨ Improved
 
 * Improve handling of keyboard interrupt during post-processing.
+* Removed several unused default parameters from the configuration file.
 
 
 ## 0.1.6 - 2024-09-26

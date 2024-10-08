@@ -1,17 +1,12 @@
 ---
 defaults:
   cameras: ['r1', 'r2', 'r3', 'b1', 'b2', 'b3', 'z1', 'z2', 'z3']
-  interactive: auto
-  no_prompt: null
-  check_pressure: true
-  check_temperature: true
   max_temperature: -140
   max_pressure: 0.001
   min_purge_time: 1200
   max_purge_time: 1800
   min_fill_time: 120
   max_fill_time: 360
-  use_thermistors: true
   log_path: '/data/logs/lvmcryo/{timestamp}.log'
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
 
