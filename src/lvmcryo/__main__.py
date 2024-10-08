@@ -580,11 +580,6 @@ async def ln2(
         log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
 
         if not skip_finally:
-            if json_handler and json_path:
-                json_handler.flush()
-                with json_path.open("r") as ff:
-                    log_data = [json.loads(line) for line in ff.readlines()]
-
             configuration_json = config.model_dump() | {
                 valve: valve_model.model_dump()
                 for valve, valve_model in config.valve_info.items()
@@ -609,6 +604,11 @@ async def ln2(
                     error = validate_error
 
             log.info("Writing fill metadata to database.")
+            if json_handler and json_path:
+                json_handler.flush()
+                with json_path.open("r") as ff:
+                    log_data = [json.loads(line) for line in ff.readlines()]
+
             record_pk = await write_fill_to_db(
                 handler,
                 api_db_route=config.internal_config["api_routes"]["register_fill"],
