@@ -224,6 +224,7 @@ class ValveHandler:
         min_open_time: float = 0.0,
         max_open_time: float | None = None,
         use_thermistor: bool = True,
+        close_on_active: bool = True,
     ):
         """Starts a fill.
 
@@ -238,6 +239,9 @@ class ValveHandler:
             Whether to use the thermistor to close the valve. If ``True`` and
             ``fill_time`` is not ``None``, ``fill_time`` become the maximum
             open time.
+        close_on_active
+            If ``use_thermistor=True``, closes the valve when the thermistor becomes
+            active. Otherwise just blocks while the thermistor is inactive.
 
         """
 
@@ -260,6 +264,7 @@ class ValveHandler:
             self.thermistor = ThermistorHandler(
                 self,
                 channel=thermistor_channel,
+                close_valve=close_on_active,
                 **self.thermistor_info,
             )
             self.thermistor.min_open_time = min_open_time
@@ -294,10 +299,11 @@ class ValveHandler:
         await asyncio.sleep(timeout)
         await self.finish(did_timeout=True)
 
-    async def finish(self, did_timeout: bool = False):
+    async def finish(self, close_valve: bool = True, did_timeout: bool = False):
         """Finishes the fill, closing the valve."""
 
-        await self._set_state(False, did_timeout=did_timeout)
+        if close_valve:
+            await self._set_state(False, did_timeout=did_timeout)
 
         self._monitor_task = await cancel_task(self._monitor_task)
         self._timeout_task = await cancel_task(self._timeout_task)

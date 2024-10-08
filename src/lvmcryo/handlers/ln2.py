@@ -25,6 +25,7 @@ from rich.panel import Panel
 
 from lvmopstools.devices.specs import spectrograph_pressures, spectrograph_temperatures
 from lvmopstools.devices.thermistors import read_thermistors
+from sdsstools.utils import GatheringTaskGroup
 
 from lvmcryo.config import ValveConfig, get_internal_config
 from lvmcryo.handlers.thermistor import ThermistorMonitor
@@ -347,6 +348,7 @@ class LN2Handler:
         self,
         cameras: list[str] | None = None,
         use_thermistors: bool = True,
+        require_all_thermistors: bool = False,
         min_fill_time: float | None = None,
         max_fill_time: float | None = None,
         prompt: bool | None = None,
@@ -360,6 +362,9 @@ class LN2Handler:
             used to instantiate the `.LN2Handler` instance.
         use_thermistors
             Whether to use the thermistors to close the valves.
+        require_all_thermistors
+            Whether to require all thermistors to be active before closing the
+            valves. If `False`, valves as closed as their thermistors become active.
         min_fill_time
             The minimum time to keep the fill valves open. Only relevant if
             using the thermistors.
@@ -391,6 +396,7 @@ class LN2Handler:
                     min_open_time=min_fill_time or 0.0,
                     max_open_time=max_fill_time,
                     use_thermistor=use_thermistors,
+                    close_on_active=not require_all_thermistors,
                 )
             )
 
@@ -417,6 +423,14 @@ class LN2Handler:
             raise
 
         finally:
+            if use_thermistors and require_all_thermistors:
+                # If we are waiting for all thermistors to be active,
+                # we need to close all valves now.
+                self.log.info("Closing all valves.")
+                async with GatheringTaskGroup() as group:
+                    for valve_handler in self.valve_handlers.values():
+                        group.create_task(valve_handler._set_state(False))
+
             self.event_times.fill_complete = get_now()
             if prompt:
                 sshkeyboard.stop_listening()

@@ -130,6 +130,8 @@ class ThermistorHandler:
         self.log = self.valve_handler.log
 
         self.thermistor_monitor = ThermistorMonitor(interval=self.monitoring_interval)
+
+        self.active: bool = False
         self.first_active: datetime | None = None
 
     async def start_monitoring(self):
@@ -262,10 +264,17 @@ class ThermistorHandler:
             f"Thermistor {self.channel!r} has been active for more than "
             f"{elapsed_active:.1f} seconds."
         )
+        self.active = True
 
         if self.close_valve:
             self.valve_handler.log.debug(
                 f"Closing valve {self.valve_handler.valve!r} "
                 "due to thermistor feedback."
             )
-            await self.valve_handler.finish()
+        else:
+            self.valve_handler.log.warning(
+                f"Thermistor {self.channel!r} is active. Calling "
+                "ValveHandler.finish() but not closing the valve."
+            )
+
+        await self.valve_handler.finish(close_valve=self.close_valve)

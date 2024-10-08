@@ -157,10 +157,22 @@ async def ln2(
         bool,
         Option(
             " /--no-use-thermistors",
+            envvar="LVMCRYO_USE_THERMISTORS",
             help="Use thermistor values to determine purge/fill time.",
             rich_help_panel="Purge and fill options",
         ),
     ] = True,
+    require_all_thermistors: Annotated[
+        bool,
+        Option(
+            "--require-all-thermistors",
+            envvar="LVMCRYO_REQUIRE_ALL_THERMISTORS",
+            help="If set, waits until all thermistors have activated before closing "
+            "any of the valves. This prevents overpressures in the cryostats when only"
+            "some of the valves are open. Ignore if --no-use-thermistors is used. ",
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = False,
     check_pressures: Annotated[
         bool,
         Option(
@@ -421,6 +433,7 @@ async def ln2(
             email=email,
             email_level=email_level,
             use_thermistors=use_thermistors,
+            require_all_thermistors=require_all_thermistors,
             check_pressures=check_pressures,
             check_temperatures=check_temperatures,
             max_pressure=max_pressure,

@@ -134,6 +134,7 @@ async def ln2_runner(
         max_fill_time = config.fill_time or config.max_fill_time
         await handler.fill(
             use_thermistors=config.use_thermistors,
+            require_all_thermistors=config.require_all_thermistors,
             min_fill_time=config.min_fill_time,
             max_fill_time=max_fill_time,
             prompt=not config.no_prompt,
