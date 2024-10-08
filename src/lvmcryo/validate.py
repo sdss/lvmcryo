@@ -112,10 +112,10 @@ def validate_fill(
         ln2_temp = data.select(polars.col.time, polars.col("^temp_[rbz][1-3]_ln2$"))
         ln2_temp = ln2_temp.sort(polars.col.time)
 
-        # Check that the last point was taken at least 5 minutes after the fill.
+        # Check that the last point was taken at least 3 minutes after the fill.
         max_time = ln2_temp["time"].max()
         extra_time = (max_time - event_times.end_time).total_seconds()  # type: ignore
-        if extra_time < 5 * 60:
+        if extra_time < 3 * 60:
             log_p(
                 "Not enough data collected after the fill "
                 "to check the LN2 temperature difference.",
