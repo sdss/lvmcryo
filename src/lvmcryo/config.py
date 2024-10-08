@@ -106,7 +106,7 @@ class Config(BaseModel):
     dry_run: bool = False
 
     use_thermistors: bool = True
-    require_all_thermistors: bool=False
+    require_all_thermistors: bool = False
     check_pressures: bool = True
     check_temperatures: bool = True
     max_pressure: float | None = None
