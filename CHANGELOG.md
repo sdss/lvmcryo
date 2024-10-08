@@ -5,6 +5,7 @@
 ### 🚀 New
 
 * Add option `--require-all-thermistors`. When passed, the thermistors don't close the valve when they become active. Once all thermistors are active, the valves are all closed at the same time. This can potentially prevent overpressures in the last one or two cryostat being filled as the other valves close.
+* Add validation of post-data.
 
 ### ✨ Improved
 

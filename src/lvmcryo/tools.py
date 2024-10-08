@@ -18,7 +18,7 @@ from contextlib import suppress
 from functools import partial
 from logging import getLogger
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from jinja2 import Environment, FileSystemLoader
@@ -27,6 +27,12 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextC
 
 from sdsstools.logger import CustomJsonFormatter
 from sdsstools.utils import run_in_executor
+
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from lvmcryo.handlers.ln2 import LN2Handler
 
 
 def is_container():
@@ -262,3 +268,62 @@ def add_json_handler(log: logging.Logger, json_path: os.PathLike | pathlib.Path)
     log.addHandler(json_handler)
 
     return json_handler
+
+
+def date_json(date: datetime | None) -> str | None:
+    """Serialises a datetime object to a JSON string."""
+
+    return date.isoformat() if date else None
+
+
+async def write_fill_to_db(
+    handler: LN2Handler,
+    api_db_route: str = "http://lvm-hub.lco.cl:8090/api/spectrographs/fills/register",
+    plot_paths: dict[str, os.PathLike] = {},
+    db_extra_payload: dict[str, Any] = {},
+):
+    """Records the fill to the database.
+
+    Parameters
+    ----------
+    handler
+        The `.LN2Handler` instance.
+    api_db_route
+        The API route to write the data to the database.
+    plot_paths
+        A dictionary with the paths to the plots.
+    db_extra_payload
+        Extra payload to send to the database registration endpoint.
+
+    Returns
+    -------
+    pk
+        The primary key of the new record in the database.
+
+    """
+
+    event_times = handler.event_times
+
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.post(
+            api_db_route,
+            json={
+                "start_time": date_json(event_times.start_time),
+                "end_time": date_json(event_times.end_time),
+                "purge_start": date_json(event_times.purge_start),
+                "purge_complete": date_json(event_times.purge_complete),
+                "fill_start": date_json(event_times.fill_start),
+                "fill_complete": date_json(event_times.fill_complete),
+                "fail_time": date_json(event_times.fail_time),
+                "abort_time": date_json(event_times.abort_time),
+                "failed": handler.failed,
+                "aborted": handler.aborted,
+                "plot_paths": {k: str(v) for k, v in plot_paths.items()},
+                **db_extra_payload,
+            },
+        )
+        response.raise_for_status()
+
+        record_id = response.json()
+
+    return record_id

@@ -27,7 +27,8 @@ from typer.core import TyperGroup
 from lvmcryo import __version__
 from lvmcryo.config import Actions, Config, InteractiveMode, NotificationLevel
 from lvmcryo.runner import post_fill_tasks
-from lvmcryo.tools import add_json_handler
+from lvmcryo.tools import add_json_handler, write_fill_to_db
+from lvmcryo.validate import validate_fill
 
 
 LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
@@ -588,14 +589,28 @@ async def ln2(
                 valve: valve_model.model_dump()
                 for valve, valve_model in config.valve_info.items()
             }
-            record_pk, plot_paths = await post_fill_tasks(
+            plot_paths = await post_fill_tasks(
                 handler,
                 notifier=notifier,
                 write_data=config.write_data,
                 data_path=config.data_path,
                 data_extra_time=config.data_extra_time if error is None else None,
                 api_data_route=config.internal_config["api_routes"]["fill_data"],
-                write_to_db=True,
+            )
+
+            if config.write_data and config.data_path:
+                validate_failed, validate_error = validate_fill(
+                    handler,
+                    config.data_path,
+                    log=log,
+                )
+                if validate_failed and error is None:
+                    handler.failed = True
+                    error = validate_error
+
+            log.info("Writing fill metadata to database.")
+            record_pk = await write_fill_to_db(
+                handler,
                 api_db_route=config.internal_config["api_routes"]["register_fill"],
                 db_extra_payload={
                     "error": str(error) if error is not None else None,
@@ -607,17 +622,16 @@ async def ln2(
                     "valve_times": handler.get_valve_times(as_string=True),
                 },
             )
-
-            images = {
-                "pressure": plot_paths.get("pressure_png", None),
-                "temps": plot_paths.get("temps_png", None),
-                "thermistors": plot_paths.get("thermistors_png", None),
-            }
-
             if record_pk:
                 log.debug(f"Record {record_pk} created in the database.")
 
             if notify:
+                images = {
+                    "pressure": plot_paths.get("pressure_png", None),
+                    "temps": plot_paths.get("temps_png", None),
+                    "thermistors": plot_paths.get("thermistors_png", None),
+                }
+
                 if error:
                     log.warning("Sending failure notifications.")
                     await notifier.notify_after_fill(

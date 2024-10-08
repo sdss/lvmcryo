@@ -133,9 +133,9 @@ class LN2Handler:
                 dry_run=self.dry_run,
             )
 
-        self._alerts_monitor_task: asyncio.Task | None = asyncio.create_task(
-            self.monitor_alerts()
-        )
+        # self._alerts_monitor_task: asyncio.Task | None = asyncio.create_task(
+        #     self.monitor_alerts()
+        # )
 
         self.event_times = EventDict()
 

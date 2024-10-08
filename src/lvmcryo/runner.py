@@ -14,9 +14,9 @@ import logging
 import pathlib
 import signal
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import httpx
 import polars
@@ -154,14 +154,12 @@ async def post_fill_tasks(
     handler: LN2Handler,
     notifier: Notifier | None = None,
     write_data: bool = False,
+    validate_data: bool = True,
     data_path: str | pathlib.Path | None = None,
     data_extra_time: float | None = None,
     api_data_route: str = "http://lvm-hub.lco.cl:8090/api/spectrographs/fills/measurements",
     generate_data_plots: bool = True,
-    write_to_db: bool = False,
-    api_db_route: str = "http://lvm-hub.lco.cl:8090/api/spectrographs/fills/register",
-    db_extra_payload: dict[str, Any] = {},
-) -> tuple[int | None, dict[str, pathlib.Path]]:
+) -> dict[str, pathlib.Path]:
     """Runs the post-fill tasks.
 
     Parameters
@@ -170,6 +168,8 @@ async def post_fill_tasks(
         The `.LN2Handler` instance.
     write_data
         Whether to collect fill metrology data and write it to disk.
+    validate_data
+        Runs the validation code.
     data_path
         The path where to write the data. If `None` writes it to the current directory.
     data_extra_time
@@ -178,26 +178,16 @@ async def post_fill_tasks(
         The API route to retrive the fill data.
     generate_data_plots
         Whether to generate plots from the data.
-    write_to_db
-        Whether to write the data to the database.
-    api_db_route
-        The API route to write the data to the database.
-    db_extra_payload
-        Extra payload to send to the database registration endpoint.
 
     Returns
     -------
-    record_id_paths
-        A tuple with the first element being the primary key of the associated record
-        if the fill data was written to the database (`None` otherwise) and the
-        second a mapping of plot type to path.
+    plot_paths
+        A mapping of plot type to path.
 
     """
 
     log = handler.log
     log.info("Running post-fill tasks.")
-
-    record_id: int | None = None
 
     event_times = handler.event_times
     plot_paths: dict[str, pathlib.Path] = {}
@@ -285,41 +275,13 @@ async def post_fill_tasks(
         except Exception as ee:
             log.error(f"Failed to retrieve fill data from API: {ee!r}")
 
-    if write_to_db and api_db_route:
-        try:
-            log.info("Writing fill metadata to database.")
-            async with httpx.AsyncClient(follow_redirects=True) as client:
-                response = await client.post(
-                    api_db_route,
-                    json={
-                        "start_time": date_json(event_times.start_time),
-                        "end_time": date_json(event_times.end_time),
-                        "purge_start": date_json(event_times.purge_start),
-                        "purge_complete": date_json(event_times.purge_complete),
-                        "fill_start": date_json(event_times.fill_start),
-                        "fill_complete": date_json(event_times.fill_complete),
-                        "fail_time": date_json(event_times.fail_time),
-                        "abort_time": date_json(event_times.abort_time),
-                        "failed": handler.failed,
-                        "aborted": handler.aborted,
-                        "plot_paths": {k: str(v) for k, v in plot_paths.items()},
-                        **db_extra_payload,
-                    },
-                )
-                response.raise_for_status()
+        if validate_data:
+            try:
+                log.info("Validating post-fill data.")
+            except Exception as ee:
+                log.error(f"Failed to validate fill data: {ee!r}")
 
-                record_id = response.json()
-
-        except Exception as ee:
-            log.error(f"Failed to write fill data to database: {ee!r}")
-
-    return record_id, plot_paths
-
-
-def date_json(date: datetime | None) -> str | None:
-    """Serialises a datetime object to a JSON string."""
-
-    return date.isoformat() if date else None
+    return plot_paths
 
 
 def generate_plots(
