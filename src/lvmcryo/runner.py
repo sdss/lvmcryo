@@ -154,7 +154,6 @@ async def post_fill_tasks(
     handler: LN2Handler,
     notifier: Notifier | None = None,
     write_data: bool = False,
-    validate_data: bool = True,
     data_path: str | pathlib.Path | None = None,
     data_extra_time: float | None = None,
     api_data_route: str = "http://lvm-hub.lco.cl:8090/api/spectrographs/fills/measurements",
@@ -168,8 +167,6 @@ async def post_fill_tasks(
         The `.LN2Handler` instance.
     write_data
         Whether to collect fill metrology data and write it to disk.
-    validate_data
-        Runs the validation code.
     data_path
         The path where to write the data. If `None` writes it to the current directory.
     data_extra_time
@@ -274,12 +271,6 @@ async def post_fill_tasks(
 
         except Exception as ee:
             log.error(f"Failed to retrieve fill data from API: {ee!r}")
-
-        if validate_data:
-            try:
-                log.info("Validating post-fill data.")
-            except Exception as ee:
-                log.error(f"Failed to validate fill data: {ee!r}")
 
     return plot_paths
 
