@@ -261,10 +261,10 @@ class ValveHandler:
 
         if use_thermistor and self.thermistor_info:
             thermistor_channel = self.thermistor_info.pop("channel", self.valve)
+            self.thermistor_info["close_valve"] = close_on_active
             self.thermistor = ThermistorHandler(
                 self,
                 channel=thermistor_channel,
-                close_valve=close_on_active,
                 **self.thermistor_info,
             )
             self.thermistor.min_open_time = min_open_time
