@@ -279,7 +279,7 @@ def date_json(date: datetime | None) -> str | None:
 async def write_fill_to_db(
     handler: LN2Handler,
     api_db_route: str = "http://lvm-hub.lco.cl:8090/api/spectrographs/fills/register",
-    plot_paths: dict[str, os.PathLike] = {},
+    plot_paths: dict[str, pathlib.Path] = {},
     db_extra_payload: dict[str, Any] = {},
 ):
     """Records the fill to the database.

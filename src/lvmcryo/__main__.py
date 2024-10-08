@@ -612,6 +612,7 @@ async def ln2(
             record_pk = await write_fill_to_db(
                 handler,
                 api_db_route=config.internal_config["api_routes"]["register_fill"],
+                plot_paths=plot_paths,
                 db_extra_payload={
                     "error": str(error) if error is not None else None,
                     "action": action.value,
