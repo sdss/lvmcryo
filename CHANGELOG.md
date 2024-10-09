@@ -1,5 +1,13 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Add custom help section `"Post-fill data logging"`.
+* Allow to set data logging options via environment variables.
+
+
 ## 0.2.0 - 2024-10-08
 
 ### 🚀 New

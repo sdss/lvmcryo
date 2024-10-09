@@ -347,6 +347,9 @@ async def ln2(
             rich_help_panel="Logging",
         ),
     ] = True,
+    #
+    # Post-fill data options
+    #
     write_data: Annotated[
         bool,
         Option(
@@ -354,25 +357,27 @@ async def ln2(
             envvar="LVMCRYO_WRITE_DATA",
             help="Saves cryostat pressures and temperatures taken during purge/fill "
             "to a parquet file.",
-            rich_help_panel="Logging",
+            rich_help_panel="Post-fill data logging",
         ),
     ] = False,
     data_path: Annotated[
         Optional[pathlib.Path],
         Option(
+            envvar="LVMCRYO_DATA_PATH",
             exists=False,
             help="Path where to save the data. Implies --write-data. "
             "Defaults to a path relative to the log path.",
-            rich_help_panel="Logging",
+            rich_help_panel="Post-fill data logging",
         ),
     ] = None,
     data_extra_time: Annotated[
         float,
         Option(
+            envvar="LVMCRYO_DATA_EXTRA_TIME",
             help="Additional time to take cryostat data after the "
             "action has been completed. The command will not complete until "
             "data collection has finished.",
-            rich_help_panel="Logging",
+            rich_help_panel="Post-fill data logging",
         ),
     ] = 60,
 ):
