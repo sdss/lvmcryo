@@ -285,14 +285,6 @@ class Notifier:
                     new_line = pattern.sub(r"\1\2", line)
                     log_lines.append(new_line)
 
-        lvmweb_url: str | None = None
-        if record_pk is not None:
-            lvmweb_url = self.config.lvmweb_fill_url.format(fill_id=record_pk)
-            await self.post_to_slack(
-                "Information about the fill can be found at "
-                f"<{lvmweb_url}|this link>."
-            )
-
         if post_to_slack:
             try:
                 if success:
@@ -317,6 +309,14 @@ class Notifier:
 
             except Exception as err:
                 log.error(f"Failed posting to Slack: {err!r}")
+
+        lvmweb_url: str | None = None
+        if record_pk is not None:
+            lvmweb_url = self.config.lvmweb_fill_url.format(fill_id=record_pk)
+            await self.post_to_slack(
+                "Information about the fill can be found at "
+                f"<{lvmweb_url}|this link>."
+            )
 
         if send_email:
             subject: str = (
