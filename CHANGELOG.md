@@ -1,11 +1,12 @@
 # Changelog
 
-## Next version
+## 0.2.1 - 2024-10-10
 
 ### ✨ Improved
 
 * Add custom help section `"Post-fill data logging"`.
 * Allow to set data logging options via environment variables.
+* Add link to Grafana plots in alert and success messages.
 
 
 ## 0.2.0 - 2024-10-08
