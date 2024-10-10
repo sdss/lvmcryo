@@ -37,6 +37,9 @@ if TYPE_CHECKING:
     from lvmcryo.handlers import LN2Handler
 
 
+GRAFANA_URL = "https://lvm-grafana.lco.cl/d/ec97aef8-071f-4f9f-9cc9-2f3f206d8308/cryostat-temperatures-and-pressures?orgId=1&refresh=10s"
+
+
 class NotifierConfig(BaseModel):
     """Configuration for the Notifier class."""
 
@@ -293,7 +296,7 @@ class Notifier:
                     slack_message = (
                         "Something went wrong with the LN₂ fill. "
                         "Please check the status of the spectrographs. "
-                        "Grafana plots are available <https://lvm-grafana.lco.cl|here>."
+                        "Grafana plots are available <GRAFANA_URL|here>."
                     )
                     if error_message:
                         if isinstance(error_message, Exception):
@@ -400,6 +403,7 @@ class Notifier:
                             error=email_error,
                             has_images=has_images,
                             valve_data=valve_data,
+                            grafana_url=GRAFANA_URL,
                             lvmweb_url=lvmweb_url,
                         ),
                     )
