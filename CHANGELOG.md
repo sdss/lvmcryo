@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Move imports inside CLI callback function to improve startup time.
+
+
 ## 0.2.1 - 2024-10-10
 
 ### ✨ Improved
