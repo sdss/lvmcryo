@@ -15,6 +15,7 @@ profiles:
     clear_lock: true
     interactive: 'no'
     notify: true
+    debug: true
     write_log: true
     write_data: true
     write_json: true
