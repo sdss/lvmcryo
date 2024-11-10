@@ -1,6 +1,6 @@
 # Changelog
 
-## Next version
+## 0.3.0 - 2024-11-10
 
 ### 🚀 New
 
@@ -10,6 +10,10 @@
 
 * Move imports inside CLI callback function to improve startup time.
 * Use API to create notifications which are also stored in the database.
+
+### ⚙️ Engineering
+
+* Use `uv` for packaging and dependency management.
 
 
 ## 0.2.1 - 2024-10-10
