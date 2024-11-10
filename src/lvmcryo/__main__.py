@@ -68,6 +68,7 @@ cli = typer.Typer(
 @cli.command("ln2")
 @cli_coro()
 async def ln2(
+    ctx: typer.Context,
     #
     # Arguments
     #
@@ -86,6 +87,16 @@ async def ln2(
     #
     # General options
     #
+    profile: Annotated[
+        Optional[str],
+        Option(
+            "--profile",
+            "-p",
+            envvar="LVMCRYO_PROFILE",
+            help="Profile to use. A list of valid profiles and parameters "
+            "can be printed with lvmcryo list-profiles.",
+        ),
+    ] = None,
     config_file: Annotated[
         Optional[pathlib.Path],
         Option(
@@ -434,6 +445,8 @@ async def ln2(
             cameras=cameras or [],
             config_file=config_file,
             dry_run=dry_run,
+            clear_lock=clear_lock,
+            with_traceback=with_traceback,
             interactive=interactive,
             no_prompt=no_prompt,
             notify=notify,
@@ -461,6 +474,11 @@ async def ln2(
             data_path=data_path,
             data_extra_time=data_extra_time,
             version=__version__,
+            profile=profile,
+            # We cannot pass the context directly so we pass a dict of the
+            # origin of each parameter to reject profile parameters that
+            # have been manually defined.
+            param_source={pp: ctx.get_parameter_source(pp) for pp in ctx.params},
         )
     except ValueError as err:
         err_console.print(f"[red]Error parsing configuration:[/] {err}")
@@ -469,7 +487,7 @@ async def ln2(
     if config.write_log and config.log_path:
         log.start_file_logger(str(config.log_path))
 
-        if write_json:
+        if config.write_json:
             json_path = config.log_path.with_suffix(".json")
             json_handler = add_json_handler(log, json_path)
 
@@ -497,8 +515,8 @@ async def ln2(
     if not config.notify:
         log.debug("Notifications are disabled and will not be emitted.")
 
-    if config_file is not None:
-        log.info(f"Using configuration file: {config_file!s}")
+    if config.config_file is not None:
+        log.info(f"Using configuration file: {config.config_file!s}")
 
     if not config.no_prompt:
         stdout_console.print(f"Action {config.action.value} will run with:")
@@ -521,7 +539,7 @@ async def ln2(
         alerts_route=config.internal_config["api_routes"]["alerts"],
     )
 
-    if LOCKFILE.exists() and clear_lock:
+    if LOCKFILE.exists() and config.clear_lock:
         log.warning("Lock file exists. Removing it because --clear-lock.")
         LOCKFILE.unlink()
 
@@ -544,7 +562,7 @@ async def ln2(
             "the lock."
         )
 
-        if notify:
+        if config.notify:
             log.warning("Sending failure notifications.")
             await notifier.notify_after_fill(
                 False,
@@ -568,7 +586,7 @@ async def ln2(
         handler.failed = True
 
         error = err
-        if with_traceback:
+        if config.with_traceback:
             raise
 
         raise typer.Exit(1)
@@ -624,7 +642,9 @@ async def ln2(
                     "error": str(error) if error is not None else None,
                     "action": action.value,
                     "log_file": str(config.log_path) if config.log_path else None,
-                    "json_file": str(json_path) if json_path and write_json else None,
+                    "json_file": str(json_path)
+                    if json_path and config.write_json
+                    else None,
                     "log_data": log_data,
                     "configuration": configuration_json,
                     "valve_times": handler.get_valve_times(as_string=True),
@@ -687,6 +707,21 @@ async def _close_valves_helper():
         raise typer.Exit(1)
 
     return typer.Exit(0)
+
+
+@cli.command("list-profiles")
+def list_profiles():
+    """Lists the available profiles."""
+
+    from lvmcryo.config import get_internal_config
+
+    internal_config = get_internal_config()
+    profiles = internal_config["profiles"]
+
+    for profile in profiles:
+        info_console.print(profile, style="bold")
+        info_console.print(profiles[profile])
+        print()
 
 
 @cli.command("close-valves")
