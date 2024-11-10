@@ -43,9 +43,8 @@ GRAFANA_URL = "https://lvm-grafana.lco.cl/d/ec97aef8-071f-4f9f-9cc9-2f3f206d8308
 class NotifierConfig(BaseModel):
     """Configuration for the Notifier class."""
 
-    slack_route: str
-    slack_channels: dict[NotificationLevel, str | list[str]]
-    slack_mentions: dict[NotificationLevel, str | list[str]] = {}
+    api_route: str
+    slack_channel: str
     slack_from: str = "LN₂ Helper"
 
     email_recipients: list[str]
@@ -67,7 +66,7 @@ class Notifier:
             raise ValidationError("Configuration does not have notifications section.")
 
         self.config = NotifierConfig(
-            slack_route=config_data["api_routes"]["slack"],
+            api_route=config_data["api_routes"]["create_notification"],
             **config_data["notifications"],
         )
 
@@ -82,8 +81,7 @@ class Notifier:
         self,
         text: str | None = None,
         level: NotificationLevel = NotificationLevel.info,
-        mentions: str | list[str] | None = None,
-        channels: str | list[str] | None = None,
+        channel: str | None = None,
     ):
         """Posts a message to Slack.
 
@@ -94,56 +92,41 @@ class Notifier:
         level
             The level of the message. Determines the channel where the message
             is sent.
-        mentions
-            A list of Slack users to mention in the message.
-        channels
+        channel
             The channel in the SSDS-V workspace where to send the message. Defaults
-            to the configuration value. Can be a string or a list of strings, in
-            which case the message is sent to all the channels in the list.
+            to the configuration value.
 
         """
 
         if self.disabled or self.slack_disabled:
             return
 
-        route = self.config.slack_route
+        route = self.config.api_route
 
-        channels = channels or self.config.slack_channels[level]
-        if isinstance(channels, str):
-            channels = [channels]
+        channel = channel or self.config.slack_channel
+        notification_level = "INFO" if level == NotificationLevel.info else "CRITICAL"
 
-        if mentions is None:
-            if level in self.config.slack_mentions:
-                mentions = self.config.slack_mentions[level]
-            else:
-                mentions = []
+        try:
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                response = await client.post(
+                    route,
+                    json={
+                        "message": text,
+                        "level": notification_level,
+                        "slack_channel": channel,
+                        "email_on_critical": False,  # We handle our own mailing
+                        "slack_extra_params": {"username": self.config.slack_from},
+                    },
+                )
 
-        if isinstance(mentions, str):
-            mentions = [mentions]
+            if response.status_code != 200:
+                raise RuntimeError(response.text)
 
-        failed: bool = False
-        for channel in channels:
-            try:
-                async with httpx.AsyncClient(follow_redirects=True) as client:
-                    response = await client.post(
-                        route,
-                        json={
-                            "channel": channel,
-                            "text": text,
-                            "username": self.config.slack_from,
-                            "mentions": mentions,
-                        },
-                    )
+        except Exception as ee:
+            warnings.warn(f"Failed sending message to Slack: {ee}")
+            return False
 
-                if response.status_code != 200:
-                    warnings.warn(f"Failed sending message to Slack: {response.text}")
-                    failed = True
-
-            except Exception as ee:
-                warnings.warn(f"Failed sending message to Slack: {ee}")
-                failed = True
-
-        return not failed
+        return True
 
     def send_email(
         self,

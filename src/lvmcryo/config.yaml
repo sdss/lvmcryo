@@ -11,13 +11,7 @@ defaults:
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
 
 notifications:
-  slack_channels:
-    info: lvm-notifications
-    error:
-      - lvm-notifications
-      - lvm-alerts
-  slack_mentions:
-    error: '@here'
+  slack_channel: lvm-notifications
   email_recipients:
     - lvm-critical@sdss.org
   email_server: smtp-01.lco.cl
@@ -26,7 +20,7 @@ notifications:
   lvmweb_fill_url: https://lvm-web.lco.cl/fills/{fill_id}
 
 api_routes:
-  slack: http://lvm-hub.lco.cl:8090/api/slack/message
+  create_notification: http://lvm-hub.lco.cl:8090/api/notifications/create
   alerts: http://lvm-hub.lco.cl:8090/api/alerts
   fill_data: http://lvm-hub.lco.cl:8090/api/spectrographs/fills/measurements
   register_fill: http://lvm-hub.lco.cl:8090/api/spectrographs/fills/register
