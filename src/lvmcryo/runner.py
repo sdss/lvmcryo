@@ -72,9 +72,14 @@ async def ln2_runner(
 
     log = handler.log
 
-    # Record options used.
+    # Record options used. If in no_promp is False (the default), the full
+    # configuration has already been printed for confirmation, so we only
+    # save this with debug level.
     config_json = config.model_dump_json(indent=2)
-    log.debug(f"Running {config.action.value} with configuration:\n{config_json}")
+    log.log(
+        logging.INFO if config.no_prompt else logging.DEBUG,
+        f"Running {config.action.value} with configuration:\n{config_json}",
+    )
 
     if config.dry_run:
         log.warning("Running in dry-run mode. No valves will be operated.")
