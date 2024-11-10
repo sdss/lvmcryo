@@ -16,6 +16,7 @@ from functools import lru_cache
 
 from typing import Annotated, Any, Self
 
+from click.core import ParameterSource
 from pydantic import (
     BaseModel,
     Field,
@@ -104,6 +105,8 @@ class Config(BaseModel):
     interactive: InteractiveMode = InteractiveMode.auto
     no_prompt: bool = False
     dry_run: bool = False
+    clear_lock: bool = False
+    with_traceback: bool = False
 
     use_thermistors: bool = True
     require_all_thermistors: bool = False
@@ -141,6 +144,9 @@ class Config(BaseModel):
 
     error: Annotated[bool, ExcludedField] = False
 
+    profile: str | None = None
+    param_source: Annotated[dict[str, ParameterSource | None], ExcludedField] = {}
+
     def model_post_init(self, __context: Any) -> None:
         self._internal_config = get_internal_config(self.config_file)
         return super().model_post_init(__context)
@@ -176,7 +182,7 @@ class Config(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def check_ommitted_fields(cls, data: Any) -> Any:
+    def before_validator(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             # Not sure if this is likely to happen.
             return data
@@ -184,6 +190,17 @@ class Config(BaseModel):
         # Ensure we have an internal configuration dictionary.
         config = get_internal_config(data.get("config_file", None))
         defaults = config.get("defaults", {})
+
+        # If a profile has been passed, we update the input parameters with those
+        # in the profile. But we want to do that only for cases in which the user
+        # has not explicitly passed the parameter as a flag.
+        if (profile := data["profile"]) is not None:
+            profile_data = config.get("profiles", {}).get(profile, {})
+            param_source = data.get("param_source", {})
+            for key in profile_data:
+                psource = param_source.get(key, None)
+                if psource != ParameterSource.COMMANDLINE:
+                    data[key] = profile_data[key]
 
         # Use internal configuration files to fill in missing fields.
         for field in [

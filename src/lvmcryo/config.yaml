@@ -10,6 +10,17 @@ defaults:
   log_path: '/data/logs/lvmcryo/{timestamp}.log'
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
 
+profiles:
+  production:
+    clear_lock: true
+    interactive: 'no'
+    notify: true
+    write_log: true
+    write_data: true
+    write_json: true
+    email_level: info
+    data_extra_time: 1200
+
 notifications:
   slack_channel: lvm-notifications
   email_recipients:

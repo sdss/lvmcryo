@@ -2,6 +2,10 @@
 
 ## Next version
 
+### 🚀 New
+
+* [#8](https://github.com/sdss/lvmcryo/pull/8) `lvmcryo ln2` now accepts a `--profile` argument that allows to define groups of parameters from an entry in the configuration file.
+
 ### ✨ Improved
 
 * Move imports inside CLI callback function to improve startup time.
