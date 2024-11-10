@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### 🔧 Fixed
+
+* Rename `debug` to `with_traceback` in the `production` profile.
+
+
 ## 0.3.0 - 2024-11-10
 
 ### 🚀 New
