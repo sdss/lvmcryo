@@ -618,13 +618,22 @@ async def ln2(
                 api_data_route=config.internal_config["api_routes"]["fill_data"],
             )
 
-            if config.write_data and config.data_path:
+            if (
+                config.write_data
+                and config.data_path
+                and config.data_path.exists()
+                and not error
+            ):
                 validate_failed, validate_error = validate_fill(
                     handler,
                     config.data_path,
                     log=log,
                 )
                 if validate_failed and error is None:
+                    await notifier.post_to_slack(
+                        "Fill validation failed. Check the log for details.",
+                        level=NotificationLevel.error,
+                    )
                     handler.failed = True
                     error = validate_error
 
@@ -653,7 +662,7 @@ async def ln2(
             if record_pk:
                 log.debug(f"Record {record_pk} created in the database.")
 
-            if notify:
+            if config.notify:
                 images = {
                     "pressure": plot_paths.get("pressure_png", None),
                     "temps": plot_paths.get("temps_png", None),

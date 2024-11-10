@@ -84,11 +84,19 @@ def validate_fill(
 
     """
 
-    if isinstance(data, (pathlib.Path, str)):
-        data = polars.read_parquet(data)
-
     log_p = partial(log_or_raise, log, raise_on_error)
     log_p("Validating post-fill data.")
+
+    if isinstance(data, (pathlib.Path, str)):
+        file_ = pathlib.Path(data)
+        if not file_.exists():
+            log_p(
+                f"File {file_} does not exist. Cannot validate fill.",
+                level=logging.WARNING,
+            )
+            return (False, None)
+
+        data = polars.read_parquet(data)
 
     event_times = ln2_handler.event_times
 
