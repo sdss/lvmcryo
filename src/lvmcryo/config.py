@@ -198,6 +198,9 @@ class Config(BaseModel):
             profile_data = config.get("profiles", {}).get(profile, {})
             param_source = data.get("param_source", {})
             for key in profile_data:
+                if key not in data:
+                    warnings.warn(f"Unknwon parameter in profile: {key}")
+                    continue
                 psource = param_source.get(key, None)
                 if psource != ParameterSource.COMMANDLINE:
                     data[key] = profile_data[key]
