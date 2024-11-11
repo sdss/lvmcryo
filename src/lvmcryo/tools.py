@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import pathlib
 import time
+import warnings
 from contextlib import suppress
 from functools import partial
-from logging import getLogger
+from logging import FileHandler, getLogger
 
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +34,7 @@ from sdsstools.utils import run_in_executor
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from lvmcryo.config import Config
     from lvmcryo.handlers.ln2 import LN2Handler
 
 
@@ -276,54 +279,125 @@ def date_json(date: datetime | None) -> str | None:
     return date.isoformat() if date else None
 
 
-async def write_fill_to_db(
-    handler: LN2Handler,
-    api_db_route: str = "http://lvm-hub.lco.cl:8090/api/spectrographs/fills/register",
-    plot_paths: dict[str, pathlib.Path] = {},
-    db_extra_payload: dict[str, Any] = {},
-):
-    """Records the fill to the database.
+class DBHandler:
+    """Handles writing the fill to the database.
 
     Parameters
     ----------
+    action
+        The action being performed.
     handler
         The `.LN2Handler` instance.
+    config
+        The configuration object.
     api_db_route
         The API route to write the data to the database.
-    plot_paths
-        A dictionary with the paths to the plots.
-    db_extra_payload
-        Extra payload to send to the database registration endpoint.
-
-    Returns
-    -------
-    pk
-        The primary key of the new record in the database.
+    json_handler
+        The logging handler used to write JSON data.
 
     """
 
-    event_times = handler.event_times
+    def __init__(
+        self,
+        action: str,
+        handler: LN2Handler,
+        config: Config,
+        api_route: str | None = None,
+        json_handler: FileHandler | None = None,
+    ) -> None:
+        self.pk: int | None = None
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        response = await client.post(
-            api_db_route,
-            json={
-                "start_time": date_json(event_times.start_time),
-                "end_time": date_json(event_times.end_time),
-                "purge_start": date_json(event_times.purge_start),
-                "purge_complete": date_json(event_times.purge_complete),
-                "fill_start": date_json(event_times.fill_start),
-                "fill_complete": date_json(event_times.fill_complete),
-                "fail_time": date_json(event_times.fail_time),
-                "abort_time": date_json(event_times.abort_time),
-                "failed": handler.failed,
-                "aborted": handler.aborted,
-                "plot_paths": {k: str(v) for k, v in plot_paths.items()},
-                **db_extra_payload,
-            },
-        )
-        response.raise_for_status()
+        self.action = action
+        self.handler = handler
+        self.config = config
+        self.api_route = api_route or config.internal_config["api_routes.register_fill"]
 
-        record_id = response.json()
+        self.json_handler = json_handler
 
-    return record_id
+    def get_log_data(self):
+        """Returns the log data for the fill."""
+
+        if self.json_handler:
+            self.json_handler.flush()
+            json_path = pathlib.Path(self.json_handler.baseFilename)
+            with json_path.open("r") as ff:
+                return [json.loads(line) for line in ff.readlines()]
+
+        return None
+
+    async def write(
+        self,
+        complete: bool = False,
+        plot_paths: dict[str, pathlib.Path] = {},
+        error: Exception | str | None = None,
+        raise_on_error: bool = False,
+    ):
+        """Records the fill to the database.
+
+        Parameters
+        ----------
+        complete
+            Whether the action is complete.
+        plot_paths
+            A dictionary with the paths to the plots.
+        error
+            The error message or ``None`` if no error.
+        raise_on_error
+            Whether to raise an exception if the write fails.
+
+        Returns
+        -------
+        pk
+            The primary key of the new record in the database.
+
+        """
+
+        event_times = self.handler.event_times
+        log_path = self.config.log_path
+
+        json_path = self.json_handler.baseFilename if self.json_handler else None
+        json_file = str(json_path) if json_path and self.config.write_json else None
+
+        configuration_json = self.config.model_dump() | {
+            valve: valve_model.model_dump()
+            for valve, valve_model in self.config.valve_info.items()
+        }
+
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.post(
+                self.api_route,
+                json={
+                    "action": self.action,
+                    "complete": complete,
+                    "pk": self.pk,
+                    "start_time": date_json(event_times.start_time),
+                    "end_time": date_json(event_times.end_time),
+                    "purge_start": date_json(event_times.purge_start),
+                    "purge_complete": date_json(event_times.purge_complete),
+                    "fill_start": date_json(event_times.fill_start),
+                    "fill_complete": date_json(event_times.fill_complete),
+                    "fail_time": date_json(event_times.fail_time),
+                    "abort_time": date_json(event_times.abort_time),
+                    "failed": self.handler.failed,
+                    "aborted": self.handler.aborted,
+                    "plot_paths": {k: str(v) for k, v in plot_paths.items()},
+                    "log_file": str(log_path) if log_path else None,
+                    "valve_times": self.handler.get_valve_times(as_string=True),
+                    "json_file": json_file,
+                    "log_data": self.get_log_data(),
+                    "configuration": configuration_json,
+                    "error": str(error) if error is not None else None,
+                },
+            )
+
+            if response.status_code != 200:
+                if raise_on_error:
+                    raise RuntimeError(f"Error writing to the DB: {response.text}")
+                else:
+                    warnings.warn(f"Error writing to the DB: {response.text}")
+
+                return self.pk
+
+            self.pk = response.json()
+
+        return self.pk

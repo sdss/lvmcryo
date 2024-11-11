@@ -31,6 +31,7 @@ from lvmcryo.notifier import Notifier
 
 if TYPE_CHECKING:
     from lvmcryo.config import Config
+    from lvmcryo.tools import DBHandler
 
 
 __all__ = ["ln2_runner"]
@@ -58,6 +59,7 @@ async def ln2_runner(
     handler: LN2Handler,
     config: Config,
     notifier: Notifier | None = None,
+    db_handler: DBHandler | None = None,
 ):
     """Runs the purge/fill process.
 
@@ -128,6 +130,7 @@ async def ln2_runner(
             min_purge_time=config.min_purge_time,
             max_purge_time=max_purge_time,
             prompt=not config.no_prompt,
+            preopen_cb=db_handler.write if db_handler is not None else None,
         )
 
         if handler.failed or handler.aborted:
@@ -143,6 +146,7 @@ async def ln2_runner(
             min_fill_time=config.min_fill_time,
             max_fill_time=max_fill_time,
             prompt=not config.no_prompt,
+            preopen_cb=db_handler.write if db_handler is not None else None,
         )
 
         if handler.failed or handler.aborted:

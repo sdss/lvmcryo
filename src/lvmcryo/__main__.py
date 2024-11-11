@@ -21,6 +21,7 @@ from typer import Argument, Option
 from typer.core import TyperGroup
 
 from lvmcryo.config import Actions, InteractiveMode, NotificationLevel
+from lvmcryo.tools import DBHandler
 
 
 LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
@@ -393,7 +394,6 @@ async def ln2(
 
     """
 
-    import json
     from logging import FileHandler
     from tempfile import NamedTemporaryFile
 
@@ -410,7 +410,6 @@ async def ln2(
         LockExistsError,
         add_json_handler,
         ensure_lock,
-        write_fill_to_db,
     )
     from lvmcryo.validate import validate_fill
 
@@ -426,7 +425,6 @@ async def ln2(
 
     json_path: pathlib.Path | None = None
     json_handler: FileHandler | None = None
-    log_data: list[dict] | None = None
     images: dict[str, pathlib.Path | None] = {}
 
     if action == Actions.abort:
@@ -543,10 +541,15 @@ async def ln2(
         log.warning("Lock file exists. Removing it because --clear-lock.")
         LOCKFILE.unlink()
 
+    db_handler = DBHandler(action, handler, config, json_handler=json_handler)
+    record_pk = await db_handler.write(complete=False)
+    if record_pk:
+        log.debug(f"Record {record_pk} created in the database.")
+
     try:
         with ensure_lock(LOCKFILE):
             # Run worker.
-            await ln2_runner(handler, config, notifier)
+            await ln2_runner(handler, config, notifier, db_handler=db_handler)
 
             # Check handler status.
             if handler.failed:
@@ -605,10 +608,10 @@ async def ln2(
         log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
 
         if not skip_finally:
-            configuration_json = config.model_dump() | {
-                valve: valve_model.model_dump()
-                for valve, valve_model in config.valve_info.items()
-            }
+            # Do a quick update of the DB record since post_fill_tasks() may
+            # block for a long time.
+            await db_handler.write(error=error)
+
             plot_paths = await post_fill_tasks(
                 handler,
                 notifier=notifier,
@@ -638,29 +641,7 @@ async def ln2(
                     error = validate_error
 
             log.info("Writing fill metadata to database.")
-            if json_handler and json_path:
-                json_handler.flush()
-                with json_path.open("r") as ff:
-                    log_data = [json.loads(line) for line in ff.readlines()]
-
-            record_pk = await write_fill_to_db(
-                handler,
-                api_db_route=config.internal_config["api_routes"]["register_fill"],
-                plot_paths=plot_paths,
-                db_extra_payload={
-                    "error": str(error) if error is not None else None,
-                    "action": action.value,
-                    "log_file": str(config.log_path) if config.log_path else None,
-                    "json_file": str(json_path)
-                    if json_path and config.write_json
-                    else None,
-                    "log_data": log_data,
-                    "configuration": configuration_json,
-                    "valve_times": handler.get_valve_times(as_string=True),
-                },
-            )
-            if record_pk:
-                log.debug(f"Record {record_pk} created in the database.")
+            await db_handler.write(complete=True, plot_paths=plot_paths, error=error)
 
             if config.notify:
                 images = {
