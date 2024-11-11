@@ -279,7 +279,7 @@ class Notifier:
                     slack_message = (
                         "Something went wrong with the LN₂ fill. "
                         "Please check the status of the spectrographs. "
-                        "Grafana plots are available <GRAFANA_URL|here>."
+                        f"Grafana plots are available <{GRAFANA_URL}|here>."
                     )
                     if error_message:
                         if isinstance(error_message, Exception):

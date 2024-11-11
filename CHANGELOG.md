@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### 🔧 Fixed
+
+* Fix rendering of Grafana URL in Slack message.
+
+
 ## 0.3.2 - 2024-11-11
 
 ### ✨ Improved
