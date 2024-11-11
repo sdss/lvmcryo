@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* [#10](https://github.com/sdss/lvmcryo/pull/10) Update database record during fill. Now the DB record for a fill is created before the purge begins and updated several times during the purge/fill process.
+
+
 ## 0.3.1 - 2024-11-10
 
 ### 🔧 Fixed
