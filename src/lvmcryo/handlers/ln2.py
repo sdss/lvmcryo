@@ -13,7 +13,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 
-from typing import Coroutine, Literal, NoReturn, overload
+from typing import Any, Callable, Coroutine, Literal, NoReturn, overload
 
 import sshkeyboard
 from pydantic import BaseModel, field_serializer
@@ -281,6 +281,7 @@ class LN2Handler:
         min_purge_time: float | None = None,
         max_purge_time: float | None = None,
         prompt: bool | None = None,
+        preopen_cb: Callable[[], Coroutine | Any] | None = None,
     ):
         """Purges the system.
 
@@ -301,6 +302,8 @@ class LN2Handler:
         prompt
             Whether to show a prompt to stop or cancel the purge. If ``None``,
             determined from the instance ``interactive`` attribute.
+        preopen_cb
+            A callback to run before opening the purge valve.
 
         """
 
@@ -322,6 +325,12 @@ class LN2Handler:
             self._kb_monitor(action="purge")
 
         try:
+            if preopen_cb:
+                if asyncio.iscoroutinefunction(preopen_cb):
+                    await preopen_cb()
+                else:
+                    preopen_cb()
+
             await valve_handler.start_fill(
                 min_open_time=min_purge_time or 0.0,
                 max_open_time=max_purge_time,
@@ -352,6 +361,7 @@ class LN2Handler:
         min_fill_time: float | None = None,
         max_fill_time: float | None = None,
         prompt: bool | None = None,
+        preopen_cb: Callable[[], Coroutine | Any] | None = None,
     ):
         """Fills the selected cameras.
 
@@ -376,6 +386,8 @@ class LN2Handler:
         prompt
             Whether to show a prompt to stop or cancel the fill. If ``None``,
             determined from the instance ``interactive`` attribute.
+        preopen_cb
+            A callback to run before opening the fill valves.
 
         """
 
@@ -413,6 +425,12 @@ class LN2Handler:
             self._kb_monitor(action="fill")
 
         try:
+            if preopen_cb:
+                if asyncio.iscoroutinefunction(preopen_cb):
+                    await preopen_cb()
+                else:
+                    preopen_cb()
+
             await asyncio.gather(*fill_tasks)
 
             if not self.aborted:
