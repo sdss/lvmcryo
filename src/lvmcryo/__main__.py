@@ -542,7 +542,7 @@ async def ln2(
         LOCKFILE.unlink()
 
     db_handler = DBHandler(action, handler, config, json_handler=json_handler)
-    record_pk = await db_handler.write(done=False)
+    record_pk = await db_handler.write(complete=False)
     if record_pk:
         log.debug(f"Record {record_pk} created in the database.")
 
@@ -641,7 +641,7 @@ async def ln2(
                     error = validate_error
 
             log.info("Writing fill metadata to database.")
-            await db_handler.write(done=True, plot_paths=plot_paths, error=error)
+            await db_handler.write(complete=True, plot_paths=plot_paths, error=error)
 
             if config.notify:
                 images = {

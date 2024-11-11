@@ -327,7 +327,7 @@ class DBHandler:
 
     async def write(
         self,
-        done: bool = False,
+        complete: bool = False,
         plot_paths: dict[str, pathlib.Path] = {},
         error: Exception | str | None = None,
         raise_on_error: bool = False,
@@ -336,7 +336,7 @@ class DBHandler:
 
         Parameters
         ----------
-        done
+        complete
             Whether the action is complete.
         plot_paths
             A dictionary with the paths to the plots.
@@ -368,7 +368,7 @@ class DBHandler:
                 self.api_route,
                 json={
                     "action": self.action,
-                    "done": done,
+                    "complete": complete,
                     "pk": self.pk,
                     "start_time": date_json(event_times.start_time),
                     "end_time": date_json(event_times.end_time),
