@@ -92,7 +92,14 @@ async def ln2_runner(
     action = config.action.value
 
     if config.use_thermistors or config.purge_time is None or config.fill_time is None:
-        await notifier.post_to_slack(f"Starting LN₂ `{action}` at {now_str}.")
+        lvmweb_url = config.internal_config["notifications.lvmweb_fill_url"]
+        message = f"Starting LN₂ `{action}` at {now_str}."
+        if db_handler and db_handler.pk is not None:
+            fill_url = lvmweb_url.format(fill_id=db_handler.pk)
+            message += f" Details can be followed from the <{fill_url}|LVM webapp>."
+
+        await notifier.post_to_slack(message)
+
     else:
         await notifier.post_to_slack(
             f"Starting LN₂ `{action}` at {now_str} with "

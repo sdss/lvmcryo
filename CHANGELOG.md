@@ -2,6 +2,10 @@
 
 ## Next version
 
+### ✨ Improved
+
+* Include the LVM Web link in a Slack message when the fill starts.
+
 ### 🔧 Fixed
 
 * Fix rendering of Grafana URL in Slack message.
