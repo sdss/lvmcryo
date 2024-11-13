@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4 - 2024-11-12
+
+### 🏷️ Changed
+
+* Use `smtp-02.lco.cl` as the SMTP server for sending emails.
+
+
 ## 0.3.3 - 2024-11-12
 
 ### ✨ Improved

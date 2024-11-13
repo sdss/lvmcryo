@@ -26,7 +26,7 @@ notifications:
   slack_channel: lvm-notifications
   email_recipients:
     - lvm-critical@sdss.org
-  email_server: smtp-01.lco.cl
+  email_server: smtp-02.lco.cl
   email_from: LVM LN2 system <lvm-ln2@lco.cl>
   email_reply_to: lvm-critical@sdss.org
   lvmweb_fill_url: https://lvm-web.lco.cl/fills/{fill_id}
