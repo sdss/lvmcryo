@@ -123,7 +123,7 @@ class Notifier:
                 raise RuntimeError(response.text)
 
         except Exception as ee:
-            warnings.warn(f"Failed sending message to Slack: {ee}")
+            warnings.warn(f"Failed sending message to Slack: {ee}", UserWarning)
             return False
 
         return True
@@ -214,7 +214,7 @@ class Notifier:
             with smtplib.SMTP(host=email_host, port=email_port) as smtp:
                 smtp.sendmail(from_address, ", ".join(recipients), msg.as_string())
         except Exception as ee:
-            warnings.warn(f"Failed sending email: {ee}")
+            warnings.warn(f"Failed sending email: {ee}", UserWarning)
             return False
 
         return True

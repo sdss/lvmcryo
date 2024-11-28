@@ -77,7 +77,7 @@ class ThermistorMonitor:
             try:
                 data: dict[str, bool] = await read_thermistors()
             except Exception as ee:
-                warnings.warn(f"Error reading thermistors: {ee}")
+                warnings.warn(f"Error reading thermistors: {ee}", UserWarning)
                 continue
 
             self.data.append({"timestamp": time(), "data": data})

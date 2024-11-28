@@ -166,7 +166,10 @@ class Config(BaseModel):
 
         if value in ["yes", True, 1]:
             if is_container:
-                warnings.warn("Interactive mode may not work in containers.")
+                warnings.warn(
+                    "Interactive mode may not work in containers.",
+                    UserWarning,
+                )
             return InteractiveMode.yes
 
         if value in ["no", False, 0]:
@@ -199,7 +202,7 @@ class Config(BaseModel):
             param_source = data.get("param_source", {})
             for key in profile_data:
                 if key not in data:
-                    warnings.warn(f"Unknwon parameter in profile: {key}")
+                    warnings.warn(f"Unknwon parameter in profile: {key}", UserWarning)
                     continue
                 psource = param_source.get(key, None)
                 if psource != ParameterSource.COMMANDLINE:
