@@ -15,7 +15,6 @@ import logging
 import os
 import pathlib
 import time
-import warnings
 from contextlib import suppress
 from functools import partial
 from logging import FileHandler, getLogger
@@ -352,6 +351,7 @@ class DBHandler:
 
         """
 
+        log = self.handler.log
         event_times = self.handler.event_times
         log_path = self.config.log_path
 
@@ -363,38 +363,38 @@ class DBHandler:
             for valve, valve_model in self.config.valve_info.items()
         }
 
+        payload = {
+            "action": self.action,
+            "complete": complete,
+            "pk": self.pk,
+            "start_time": date_json(event_times.start_time),
+            "end_time": date_json(event_times.end_time),
+            "purge_start": date_json(event_times.purge_start),
+            "purge_complete": date_json(event_times.purge_complete),
+            "fill_start": date_json(event_times.fill_start),
+            "fill_complete": date_json(event_times.fill_complete),
+            "fail_time": date_json(event_times.fail_time),
+            "abort_time": date_json(event_times.abort_time),
+            "failed": self.handler.failed,
+            "aborted": self.handler.aborted,
+            "plot_paths": {k: str(v) for k, v in plot_paths.items()},
+            "log_file": str(log_path) if log_path else None,
+            "valve_times": self.handler.get_valve_times(as_string=True),
+            "json_file": json_file,
+            "log_data": self.get_log_data(),
+            "configuration": configuration_json,
+            "error": str(error) if error is not None else None,
+        }
+
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.post(
-                self.api_route,
-                json={
-                    "action": self.action,
-                    "complete": complete,
-                    "pk": self.pk,
-                    "start_time": date_json(event_times.start_time),
-                    "end_time": date_json(event_times.end_time),
-                    "purge_start": date_json(event_times.purge_start),
-                    "purge_complete": date_json(event_times.purge_complete),
-                    "fill_start": date_json(event_times.fill_start),
-                    "fill_complete": date_json(event_times.fill_complete),
-                    "fail_time": date_json(event_times.fail_time),
-                    "abort_time": date_json(event_times.abort_time),
-                    "failed": self.handler.failed,
-                    "aborted": self.handler.aborted,
-                    "plot_paths": {k: str(v) for k, v in plot_paths.items()},
-                    "log_file": str(log_path) if log_path else None,
-                    "valve_times": self.handler.get_valve_times(as_string=True),
-                    "json_file": json_file,
-                    "log_data": self.get_log_data(),
-                    "configuration": configuration_json,
-                    "error": str(error) if error is not None else None,
-                },
-            )
+            response = await client.post(self.api_route, json=payload)
 
             if response.status_code != 200:
                 if raise_on_error:
                     raise RuntimeError(f"Error writing to the DB: {response.text}")
                 else:
-                    warnings.warn(f"Error writing to the DB: {response.text}")
+                    log.warning(f"Error writing to the DB: {response.text}")
+                    log.warning(f"DB payload: {payload}")
 
                 return self.pk
 

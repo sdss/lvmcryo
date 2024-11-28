@@ -2,6 +2,10 @@
 
 ## Next version
 
+### ✨ Improved
+
+* Log the payload if the DB registration fails.
+
 ### 🔧 Fixed
 
 * Emit warnings as `UserWarning` to make sure they are recorded in the logs.
