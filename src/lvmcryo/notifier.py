@@ -212,7 +212,7 @@ class Notifier:
 
         try:
             with smtplib.SMTP(host=email_host, port=email_port) as smtp:
-                smtp.sendmail(from_address, ", ".join(recipients), msg.as_string())
+                smtp.sendmail(from_address, recipients, msg.as_string())
         except Exception as ee:
             warnings.warn(f"Failed sending email: {ee}", UserWarning)
             return False

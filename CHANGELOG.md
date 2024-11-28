@@ -5,6 +5,7 @@
 ### 🔧 Fixed
 
 * Emit warnings as `UserWarning` to make sure they are recorded in the logs.
+* Fix incorrect use of `sendmail` for multiple recipients in email notifications.
 
 
 ## 0.3.4 - 2024-11-12
