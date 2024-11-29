@@ -191,7 +191,7 @@ class LN2Handler:
         else:
             try:
                 self.log.info("Checking for O2 alarms ...")
-                if await retrier(o2_alert)(self.alerts_route):
+                if await o2_alert(self.alerts_route):
                     self.fail("O2 alarm detected.")
                 else:
                     self.log.debug("No O2 alarms reported.")
