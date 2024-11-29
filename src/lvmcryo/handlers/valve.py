@@ -18,17 +18,17 @@ from typing import TYPE_CHECKING, Any, Optional
 from rich.progress import TaskID
 
 from lvmopstools.clu import CluClient
+from lvmopstools.retrier import Retrier
 
 from lvmcryo.config import get_internal_config
 from lvmcryo.handlers.thermistor import ThermistorHandler
-from lvmcryo.tools import (
-    cancel_task,
-    get_fake_logger,
-)
+from lvmcryo.tools import cancel_task, get_fake_logger
 
 
 if TYPE_CHECKING:
     from sdsstools.configuration import Configuration
+
+    from lvmcryo.tools import TimerProgressBar
 
 
 __all__ = [
@@ -40,6 +40,7 @@ __all__ = [
 ]
 
 
+@Retrier(max_attempts=3, delay=1)
 async def outlet_info(actor: str, outlet: str) -> dict[str, Any]:
     """Retrieves outlet information from the NPS."""
 
@@ -51,6 +52,7 @@ async def outlet_info(actor: str, outlet: str) -> dict[str, Any]:
     return cmd.replies.get("outlet_info")
 
 
+@Retrier(max_attempts=3, delay=1)
 async def valve_on_off(
     actor: str,
     outlet_name: str,
@@ -118,6 +120,7 @@ async def valve_on_off(
     return
 
 
+@Retrier(max_attempts=3, delay=1)
 async def cancel_nps_threads(actor: str, thread_id: int | None = None):
     """Cancels a script thread in an NPS.
 
@@ -136,6 +139,7 @@ async def cancel_nps_threads(actor: str, thread_id: int | None = None):
         await client.send_command(actor, command_string)
 
 
+@Retrier(max_attempts=3, delay=1)
 async def close_all_valves(config: Configuration | None = None, dry_run: bool = False):
     """Closes all the outlets."""
 
@@ -153,10 +157,6 @@ async def close_all_valves(config: Configuration | None = None, dry_run: bool = 
             for valve in valve_info
         ]
     )
-
-
-if TYPE_CHECKING:
-    from lvmcryo.tools import TimerProgressBar
 
 
 @dataclass

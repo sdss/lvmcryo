@@ -25,6 +25,7 @@ from rich.panel import Panel
 
 from lvmopstools.devices.specs import spectrograph_pressures, spectrograph_temperatures
 from lvmopstools.devices.thermistors import read_thermistors
+from lvmopstools.retrier import Retrier
 from sdsstools.utils import GatheringTaskGroup
 
 from lvmcryo.config import ValveConfig, get_internal_config
@@ -182,13 +183,15 @@ class LN2Handler:
 
         """
 
+        retrier = Retrier(max_attempts=3, delay=1)
+
         # Check O2 alarms.
         if not self.alerts_route:
             self.log.warning("No alerts route provided. Not checking O2 alarms.")
         else:
             try:
                 self.log.info("Checking for O2 alarms ...")
-                if await o2_alert(self.alerts_route):
+                if await retrier(o2_alert)(self.alerts_route):
                     self.fail("O2 alarm detected.")
                 else:
                     self.log.debug("No O2 alarms reported.")
@@ -207,7 +210,7 @@ class LN2Handler:
         if max_temperature is not None:
             self.log.info("Checking LN2 temperatures ...")
             try:
-                spec_temperatures = await spectrograph_temperatures()
+                spec_temperatures = await retrier(spectrograph_temperatures)()
             except Exception as err:
                 self.fail(f"Failed reading spectrograph temperatures: {err}")
             else:
@@ -227,7 +230,7 @@ class LN2Handler:
         if max_pressure is not None:
             self.log.info("Checking pressures ...")
             try:
-                spec_pressures = await spectrograph_pressures()
+                spec_pressures = await retrier(spectrograph_pressures)()
             except Exception as err:
                 self.fail(f"Failed reading spectrograph pressures: {err}")
             else:
