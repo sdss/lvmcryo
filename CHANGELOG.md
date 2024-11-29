@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Add additional retries for valve and check safe commands.
+
+
 ## 0.3.5 - 2024-11-28
 
 ### ✨ Improved

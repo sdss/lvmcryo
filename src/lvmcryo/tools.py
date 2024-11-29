@@ -26,6 +26,7 @@ from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
 
+from lvmopstools.retrier import Retrier
 from sdsstools.logger import CustomJsonFormatter
 from sdsstools.utils import run_in_executor
 
@@ -244,6 +245,7 @@ def get_fake_logger():
     return logger
 
 
+@Retrier(max_attempts=3, delay=0.5)
 async def o2_alert(route: str = "http://lvm-hub.lco.cl:8090/api/alerts"):
     """Is there an active O2 alert?"""
 
