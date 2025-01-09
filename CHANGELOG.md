@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Try to close as many LN2 valves as possible before failing
+
+
 ## 0.3.7 - 2025-01-09
 
 ### ✨ Improved

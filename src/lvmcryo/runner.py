@@ -41,7 +41,11 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     """Handles signals to close all valves and exit cleanly."""
 
     log.error("User aborted the process. Closing all valves before exiting.")
-    await handler.close_valves(only_active=False)
+    try:
+        await handler.close_valves(only_active=False)
+    except Exception as err:
+        log.error(f"Failed closing LN2 valves: {err!r}")
+
     await handler.clear()
 
     handler.failed = True
@@ -51,7 +55,7 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     handler.event_times.abort_time = get_now()
     handler.event_times.end_time = get_now()
 
-    log.error("Exiting now. Not data or notifications will be sent.")
+    log.error("Exiting now. No data or notifications will be sent.")
     sys.exit(1)
 
 

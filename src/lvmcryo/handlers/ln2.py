@@ -593,7 +593,12 @@ class LN2Handler:
             if valve_handler.active or not only_active:
                 tasks.append(valve_handler.finish())
 
-        await asyncio.gather(*tasks)
+        # Try to close as many valves as possible but then raise the error if
+        # any failed.
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                raise result
 
     async def clear(self):
         """Cleanly finishes tasks and other clean-up tasks."""
