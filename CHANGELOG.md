@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7 - 2025-01-09
+
+### ✨ Improved
+
+* `lmvcryo ion --on` now checks the pressure of the camera (using the Sens4 transducer) and won't turn the ion pump on if the pressure is >1e-4. This can be overridden by passing the `--skip-pressure-check` flag.
+
+
 ## 0.3.6 - 2024-11-29
 
 ### ✨ Improved

@@ -13,7 +13,7 @@ import pathlib
 import signal
 from functools import wraps
 
-from typing import Annotated, Optional
+from typing import Annotated, Optional, cast
 
 import typer
 from rich.console import Console
@@ -742,6 +742,13 @@ async def ion(
             show_default=False,
         ),
     ] = None,
+    skip_pressure_check: Annotated[
+        bool,
+        Option(
+            "--skip-pressure-check",
+            help="Skips the pressure check when turning the ion pump on.",
+        ),
+    ] = False,
 ):
     """Controls the ion pumps.
 
@@ -754,6 +761,7 @@ async def ion(
     import warnings
 
     from lvmopstools.devices.ion import read_ion_pumps, toggle_ion_pump
+    from lvmopstools.devices.specs import Spectrographs, spectrograph_pressures
 
     cameras = list(map(lambda x: x.lower(), cameras)) if cameras else ["all"]
 
@@ -795,6 +803,19 @@ async def ion(
 
     for camera in cameras:
         try:
+            if on is True and not skip_pressure_check:
+                spec = f"sp{camera[-1]}"
+                pressures = await spectrograph_pressures(cast(Spectrographs, spec))
+                cam_pressure = pressures.get(camera, None)
+                if cam_pressure is None:
+                    raise ValueError(f"Could not get pressure for {camera!r}.")
+
+                if cam_pressure > 1e-4:
+                    raise ValueError(
+                        f"Camera {camera} has a pressure of {cam_pressure:.2e} "
+                        "Torr. If you want to turn it on use --skip-pressure-check."
+                    )
+
             await toggle_ion_pump(camera, on)
         except Exception as err:
             info_console.print(
