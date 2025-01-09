@@ -554,8 +554,7 @@ async def ln2(
             # Check handler status.
             if handler.failed:
                 raise RuntimeError(
-                    "No exceptions were raised but the LN2 "
-                    "handler reports a failure."
+                    "No exceptions were raised but the LN2 handler reports a failure."
                 )
 
     except LockExistsError:

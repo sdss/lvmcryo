@@ -300,8 +300,7 @@ class Notifier:
         if record_pk is not None:
             lvmweb_url = self.config.lvmweb_fill_url.format(fill_id=record_pk)
             await self.post_to_slack(
-                "Information about the fill can be found at "
-                f"<{lvmweb_url}|this link>."
+                f"Information about the fill can be found at <{lvmweb_url}|this link>."
             )
 
         if send_email:
