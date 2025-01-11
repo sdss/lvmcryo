@@ -19,6 +19,7 @@ from rich.progress import TaskID
 
 from lvmopstools.clu import CluClient
 from lvmopstools.retrier import Retrier
+from lvmopstools.utils import with_timeout
 
 from lvmcryo.config import get_internal_config
 from lvmcryo.handlers.thermistor import ThermistorHandler
@@ -93,7 +94,7 @@ async def valve_on_off(
 
     if on is True and isinstance(timeout, (int, float)) and use_script is True:
         # First we need to get the outlet number.
-        info = await outlet_info(actor, outlet_name)
+        info = await with_timeout(outlet_info(actor, outlet_name), timeout=5)
         id_ = info["id"]
 
         command_string = f"scripts run cycle_with_timeout {id_} {timeout}"
@@ -148,11 +149,14 @@ async def close_all_valves(config: Configuration | None = None, dry_run: bool = 
 
     await asyncio.gather(
         *[
-            valve_on_off(
-                valve_info[valve]["actor"],
-                valve_info[valve]["outlet"],
-                False,
-                dry_run=dry_run,
+            with_timeout(
+                valve_on_off(
+                    valve_info[valve]["actor"],
+                    valve_info[valve]["outlet"],
+                    False,
+                    dry_run=dry_run,
+                ),
+                timeout=10,
             )
             for valve in valve_info
         ]
@@ -210,7 +214,7 @@ class ValveHandler:
         """Check the connection to the NPS."""
 
         try:
-            info = await outlet_info(self.actor, self.outlet)
+            info = await with_timeout(outlet_info(self.actor, self.outlet), timeout=5)
             assert isinstance(info, dict), "Invalid outlet info."
             assert not info["state"], "Valve is already open."
         except Exception as err:
