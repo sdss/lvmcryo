@@ -40,7 +40,7 @@ __all__ = [
 ]
 
 
-@Retrier(max_attempts=3, delay=1)
+@Retrier(max_attempts=3, delay=1, timeout=10)
 async def outlet_info(actor: str, outlet: str) -> dict[str, Any]:
     """Retrieves outlet information from the NPS."""
 
@@ -52,7 +52,7 @@ async def outlet_info(actor: str, outlet: str) -> dict[str, Any]:
     return cmd.replies.get("outlet_info")
 
 
-@Retrier(max_attempts=3, delay=1)
+@Retrier(max_attempts=3, delay=1, timeout=30)
 async def valve_on_off(
     actor: str,
     outlet_name: str,
@@ -93,7 +93,7 @@ async def valve_on_off(
 
     if on is True and isinstance(timeout, (int, float)) and use_script is True:
         # First we need to get the outlet number.
-        info = await asyncio.wait_for(outlet_info(actor, outlet_name), timeout=10)
+        info = await outlet_info(actor, outlet_name)
         id_ = info["id"]
 
         command_string = f"scripts run cycle_with_timeout {id_} {timeout}"
@@ -120,7 +120,7 @@ async def valve_on_off(
     return
 
 
-@Retrier(max_attempts=3, delay=1)
+@Retrier(max_attempts=3, delay=1, timeout=10)
 async def cancel_nps_threads(actor: str, thread_id: int | None = None):
     """Cancels a script thread in an NPS.
 
@@ -139,7 +139,7 @@ async def cancel_nps_threads(actor: str, thread_id: int | None = None):
         await client.send_command(actor, command_string)
 
 
-@Retrier(max_attempts=3, delay=1)
+@Retrier(max_attempts=3, delay=1, timeout=60)
 async def close_all_valves(config: Configuration | None = None, dry_run: bool = False):
     """Closes all the outlets."""
 
@@ -148,14 +148,11 @@ async def close_all_valves(config: Configuration | None = None, dry_run: bool = 
 
     await asyncio.gather(
         *[
-            asyncio.wait_for(
-                valve_on_off(
-                    valve_info[valve]["actor"],
-                    valve_info[valve]["outlet"],
-                    False,
-                    dry_run=dry_run,
-                ),
-                timeout=10,
+            valve_on_off(
+                valve_info[valve]["actor"],
+                valve_info[valve]["outlet"],
+                False,
+                dry_run=dry_run,
             )
             for valve in valve_info
         ]
@@ -213,10 +210,7 @@ class ValveHandler:
         """Check the connection to the NPS."""
 
         try:
-            info = await asyncio.wait_for(
-                outlet_info(self.actor, self.outlet),
-                timeout=10,
-            )
+            info = await outlet_info(self.actor, self.outlet)
             assert isinstance(info, dict), "Invalid outlet info."
             assert not info["state"], "Valve is already open."
         except Exception as err:

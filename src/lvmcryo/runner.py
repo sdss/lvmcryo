@@ -136,12 +136,15 @@ async def ln2_runner(
     if config.action == Actions.purge_fill or config.action == Actions.purge:
         await notifier.post_to_slack("Starting purge.")
         max_purge_time = config.purge_time or config.max_purge_time
-        await handler.purge(
-            use_thermistor=config.use_thermistors,
-            min_purge_time=config.min_purge_time,
-            max_purge_time=max_purge_time,
-            prompt=not config.no_prompt,
-            preopen_cb=db_handler.write if db_handler is not None else None,
+        await asyncio.wait_for(
+            handler.purge(
+                use_thermistor=config.use_thermistors,
+                min_purge_time=config.min_purge_time,
+                max_purge_time=max_purge_time,
+                prompt=not config.no_prompt,
+                preopen_cb=db_handler.write if db_handler is not None else None,
+            ),
+            timeout=max_purge_time + 60 if max_purge_time else None,
         )
 
         if handler.failed or handler.aborted:
@@ -151,13 +154,16 @@ async def ln2_runner(
     if config.action == Actions.purge_fill or config.action == Actions.fill:
         await notifier.post_to_slack("Starting fill.")
         max_fill_time = config.fill_time or config.max_fill_time
-        await handler.fill(
-            use_thermistors=config.use_thermistors,
-            require_all_thermistors=config.require_all_thermistors,
-            min_fill_time=config.min_fill_time,
-            max_fill_time=max_fill_time,
-            prompt=not config.no_prompt,
-            preopen_cb=db_handler.write if db_handler is not None else None,
+        await asyncio.wait_for(
+            handler.fill(
+                use_thermistors=config.use_thermistors,
+                require_all_thermistors=config.require_all_thermistors,
+                min_fill_time=config.min_fill_time,
+                max_fill_time=max_fill_time,
+                prompt=not config.no_prompt,
+                preopen_cb=db_handler.write if db_handler is not None else None,
+            ),
+            timeout=max_fill_time + 60 if max_fill_time else None,
         )
 
         if handler.failed or handler.aborted:

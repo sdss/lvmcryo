@@ -4,8 +4,8 @@
 
 ### ✨ Improved
 
-* Try to close as many LN2 valves as possible before failing
-* Add timeouts to valve operations.
+* Try to close as many LN2 valves as possible before failing.
+* Add timeouts to valve operations and to the global LN2 runner and actions.
 
 
 ## 0.3.7 - 2025-01-09
