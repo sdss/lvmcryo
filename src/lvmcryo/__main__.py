@@ -173,7 +173,7 @@ async def ln2(
             "--require-all-thermistors",
             envvar="LVMCRYO_REQUIRE_ALL_THERMISTORS",
             help="If set, waits until all thermistors have activated before closing "
-            "any of the valves. This prevents overpressures in the cryostats when only"
+            "any of the valves. This prevents overpressures in the cryostats when only "
             "some of the valves are open. Ignore if --no-use-thermistors is used. ",
             rich_help_panel="Purge and fill options",
         ),
@@ -346,7 +346,7 @@ async def ln2(
         Option(
             "--write-json",
             envvar="LVMCRYO_WRITE_JSON",
-            help="Saves the log in JSON format. Uses the same path as the file log."
+            help="Saves the log in JSON format. Uses the same path as the file log. "
             "Ignored if --write-log is not passed.",
             rich_help_panel="Logging",
         ),

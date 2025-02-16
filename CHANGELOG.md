@@ -6,6 +6,10 @@
 
 * Use repr for some placeholders.
 
+### 🔧 Fixed
+
+* Fix several typos in CLI help messages
+
 
 ## 0.3.8 - 2025-01-12
 
