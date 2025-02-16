@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Use repr for some placeholders.
+
+
 ## 0.3.8 - 2025-01-12
 
 ### ✨ Improved

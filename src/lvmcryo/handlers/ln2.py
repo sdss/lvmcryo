@@ -203,7 +203,7 @@ class LN2Handler:
             self.log.info("Checking connection to NPS outlets ...")
             for valve in self.valve_handlers:
                 if not await self.valve_handlers[valve].check():
-                    raise RuntimeError(f"valve {valve} failed or did not reply.")
+                    raise RuntimeError(f"valve {valve!r} failed or did not reply.")
         except Exception as err:
             self.fail(f"Failed checking connection to NPS outlets: {err}")
 
@@ -222,9 +222,9 @@ class LN2Handler:
 
                     if ln2_temp > max_temperature:
                         self.fail(
-                            f"LN2 temperature for camera {camera} is {ln2_temp:.1f} C "
-                            f"which is above the maximum allowed temperature "
-                            f"({max_temperature:.1f} C)."
+                            f"LN2 temperature for camera {camera!r} is "
+                            f"{ln2_temp:.1f} C which is above the maximum allowed "
+                            f"temperature ({max_temperature:.1f} C)."
                         )
 
         if max_pressure is not None:
@@ -242,7 +242,7 @@ class LN2Handler:
 
                     if pressure > max_pressure:
                         self.fail(
-                            f"Pressure for camera {camera} is {pressure} Torr "
+                            f"Pressure for camera {camera!r} is {pressure} Torr "
                             f"which is above the maximum allowed pressure "
                             f"({max_pressure} Torr)."
                         )
@@ -259,19 +259,19 @@ class LN2Handler:
                 thermistor_info = self.valve_info[valve].thermistor
 
                 if thermistor_info is None:
-                    self.log.warning(f"Cannot check thermistor for {valve}.")
+                    self.log.warning(f"Cannot check thermistor for {valve!r}.")
                     continue
 
                 if thermistor_info.disabled:
-                    self.log.warning(f"Thermistor for {valve} is disabled.")
+                    self.log.warning(f"Thermistor for {valve!r} is disabled.")
                     continue
 
                 if thermistor_info.channel is None:
-                    self.fail(f"Thermistor channel for {valve} not defined.")
+                    self.fail(f"Thermistor channel for {valve!r} not defined.")
 
                 thermistor_value = thermistors[thermistor_info.channel]
                 if thermistor_value is True:
-                    self.fail(f"Thermistor for valve {valve} is active.")
+                    self.fail(f"Thermistor for valve {valve!r} is active.")
 
         self.log.info("All pre-fill checks passed.")
 
