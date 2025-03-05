@@ -9,6 +9,7 @@
 ### 🔧 Fixed
 
 * Fix several typos in CLI help messages
+* Only check the temperature difference of cameras that have been filled.
 
 
 ## 0.3.8 - 2025-01-12

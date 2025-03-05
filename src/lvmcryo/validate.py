@@ -135,6 +135,8 @@ def validate_fill(
                     continue
 
                 camera = column.split("_")[1]
+                if camera not in ln2_handler.cameras:
+                    continue
 
                 temp0 = ln2_temp[0, column]
                 temp1 = ln2_temp[-1, column]
