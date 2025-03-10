@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Use `lvmopstools 0.5.10` with support for controlling NPS-connected ion pumps.
+
+
 ## 0.3.9 - 2025-03-05
 
 ### ✨ Improved
