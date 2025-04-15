@@ -26,6 +26,7 @@ from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
 
+from lvmopstools.clu import CluClient
 from lvmopstools.retrier import Retrier
 from sdsstools.logger import CustomJsonFormatter
 from sdsstools.utils import run_in_executor
@@ -261,6 +262,19 @@ async def o2_alert(route: str = "http://lvm-hub.lco.cl:8090/api/alerts"):
 
     except Exception as ee:
         raise RuntimeError(f"Error reading alerts: {ee}")
+
+
+@Retrier(max_attempts=3, delay=0.5)
+async def ln2_estops():
+    """Returns :obj:`True` if any of the LN2 emergency stops are active."""
+
+    async with CluClient() as client:
+        try:
+            status = await client.send_command("lvmecp", "status")
+            safety_labels = status.replies.get("safety_status_labels").split(",")
+            return "E_STOP_LN2" in safety_labels
+        except Exception as ee:
+            raise RuntimeError(f"Error reading estops: {ee}")
 
 
 def add_json_handler(log: logging.Logger, json_path: os.PathLike | pathlib.Path):

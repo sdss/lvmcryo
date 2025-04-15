@@ -31,7 +31,13 @@ from sdsstools.utils import GatheringTaskGroup
 from lvmcryo.config import ValveConfig, get_internal_config
 from lvmcryo.handlers.thermistor import ThermistorMonitor
 from lvmcryo.handlers.valve import ValveHandler
-from lvmcryo.tools import TimerProgressBar, cancel_task, get_fake_logger, o2_alert
+from lvmcryo.tools import (
+    TimerProgressBar,
+    cancel_task,
+    get_fake_logger,
+    ln2_estops,
+    o2_alert,
+)
 
 
 def convert_datetime_to_iso_8601_with_z_suffix(dt: datetime.datetime) -> str:
@@ -569,6 +575,21 @@ class LN2Handler:
             except Exception as ee:
                 self.log.warning(f"Error reading alerts: {ee}")
                 n_failed += 1
+
+            try:
+                ln2_estops_active = await ln2_estops()
+                if ln2_estops_active:
+                    await self.abort(
+                        error="LN2 estops detected: aborting.",
+                        close_valves=False,  # The NPS will be unavailable
+                        raise_error=False,
+                    )
+            except Exception:
+                # Log the error but do not increase n_failed. The e-stops are a
+                # low-level safety feature. We only monitor them here to cleanly
+                # abort the fill if they are pressed, but worst case the code
+                # will fail but that won't have an impact on the system.
+                self.log.warning("Error reading LN2 estops.")
 
             if n_failed >= 10:
                 await self.abort(

@@ -22,7 +22,7 @@ from lvmopstools.retrier import Retrier
 
 from lvmcryo.config import get_internal_config
 from lvmcryo.handlers.thermistor import ThermistorHandler
-from lvmcryo.tools import cancel_task, get_fake_logger
+from lvmcryo.tools import cancel_task, get_fake_logger, ln2_estops
 
 
 if TYPE_CHECKING:
@@ -88,6 +88,11 @@ async def valve_on_off(
         was started. Otherwise `None`.
 
     """
+
+    # Check if the LN2 e-stops are active. If so we cannot operate the valves
+    # because the NPSs that control them will be powered off.
+    if await ln2_estops():
+        raise RuntimeError("Cannot operate LN2 valves: e-stops are active.")
 
     is_script: bool = False
 
