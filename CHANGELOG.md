@@ -5,6 +5,7 @@
 ### ✨ Improved
 
 * Monitor LN2 e-stops during fill and before operating a valve.
+* Updated the names of the NPSs to which the solenoid valves are connected.
 
 
 ## 0.3.10 - 2025-03-10

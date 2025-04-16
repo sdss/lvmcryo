@@ -39,34 +39,34 @@ api_routes:
 
 valve_info:
   r1:
-    actor: lvmnps.sp1
+    actor: lvmnps.valve2
     outlet: r1
   b1:
-    actor: lvmnps.sp1
+    actor: lvmnps.valve2
     outlet: b1
   z1:
-    actor: lvmnps.sp1
+    actor: lvmnps.valve2
     outlet: z1
   r2:
-    actor: lvmnps.sp2
+    actor: lvmnps.valve1
     outlet: r2
   b2:
-    actor: lvmnps.sp2
+    actor: lvmnps.valve1
     outlet: b2
   z2:
-    actor: lvmnps.sp2
+    actor: lvmnps.valve1
     outlet: z2
   r3:
-    actor: lvmnps.sp3
+    actor: lvmnps.valve1
     outlet: r3
   b3:
-    actor: lvmnps.sp3
+    actor: lvmnps.valve1
     outlet: b3
   z3:
-    actor: lvmnps.sp3
+    actor: lvmnps.valve1
     outlet: z3
   purge:
-    actor: lvmnps.sp1
+    actor: lvmnps.valve2
     outlet: purge
     thermistor:
       channel: supply
