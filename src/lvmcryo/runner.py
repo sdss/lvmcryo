@@ -42,7 +42,7 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
 
     log.error("User aborted the process. Closing all valves before exiting.")
     try:
-        await handler.close_valves(only_active=False)
+        await handler.stop(only_active=False)
     except Exception as err:
         log.error(f"Failed closing LN2 valves: {err!r}")
 

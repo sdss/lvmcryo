@@ -527,7 +527,7 @@ class LN2Handler:
 
             elif key == "enter":
                 self.log.warning("Finishing purge/fill.")
-                await self.close_valves(only_active=True)
+                await self.stop(only_active=True)
 
         self.console.print(
             Panel(
@@ -600,7 +600,7 @@ class LN2Handler:
 
             await asyncio.sleep(3)
 
-    async def close_valves(self, only_active: bool = True):
+    async def stop(self, close_valves: bool = True, only_active: bool = True):
         """Cancels ongoing fills and closes the valves.
 
         If ``only_active=True`` only active valves will be closed. Otherwise
@@ -612,7 +612,7 @@ class LN2Handler:
 
         for valve_handler in self.valve_handlers.values():
             if valve_handler.active or not only_active:
-                tasks.append(valve_handler.finish())
+                tasks.append(valve_handler.finish(close_valve=close_valves))
 
         # Try to close as many valves as possible but then raise the error if
         # any failed.
@@ -688,7 +688,7 @@ class LN2Handler:
         self.aborted = True
         self.event_times.abort_time = get_now()
 
-        if close_valves:
-            await self.close_valves(only_active=False)
+        # For each valve, close it (optionally) and finish the monitoring.
+        await self.stop(close_valves=close_valves, only_active=False)
 
         self.fail(error=error or "Aborted.", raise_error=raise_error)
