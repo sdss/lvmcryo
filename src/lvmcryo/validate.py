@@ -18,6 +18,7 @@ import polars
 
 from sdsstools.logger import SDSSLogger
 
+from lvmcryo.config import get_internal_config
 from lvmcryo.handlers.ln2 import LN2Handler
 from lvmcryo.tools import get_fake_logger
 
@@ -84,6 +85,9 @@ def validate_fill(
 
     """
 
+    config = get_internal_config()
+    max_temperature_increase = config["validation.max_temperature_increase"]
+
     log_p = partial(log_or_raise, log, raise_on_error)
     log_p("Validating post-fill data.")
 
@@ -141,7 +145,7 @@ def validate_fill(
                 temp0 = ln2_temp[0, column]
                 temp1 = ln2_temp[-1, column]
 
-                if temp1 > temp0:
+                if temp1 > (temp0 + max_temperature_increase):
                     failed = True
                     error = (
                         f"LN2 temperature for camera {camera} increased "

@@ -37,6 +37,9 @@ api_routes:
   fill_data: http://lvm-hub.lco.cl:8090/api/spectrographs/fills/measurements
   register_fill: http://lvm-hub.lco.cl:8090/api/spectrographs/fills/register
 
+validation:
+  max_temperature_increase: 2
+
 valve_info:
   r1:
     actor: lvmnps.valve2

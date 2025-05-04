@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Add `validation.max_temperature_increase` option to define the maximum temperature increase allowed for the cameras after the LN2 fill.
+
+
 ## 0.3.11 - 2025-04-16
 
 ### ✨ Improved
