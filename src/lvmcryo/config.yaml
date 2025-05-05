@@ -9,6 +9,7 @@ defaults:
   max_fill_time: 360
   log_path: '/data/logs/lvmcryo/{timestamp}.log'
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
+  max_temperature_increase: 2
 
 profiles:
   production:
@@ -36,9 +37,6 @@ api_routes:
   alerts: http://lvm-hub.lco.cl:8090/api/alerts
   fill_data: http://lvm-hub.lco.cl:8090/api/spectrographs/fills/measurements
   register_fill: http://lvm-hub.lco.cl:8090/api/spectrographs/fills/register
-
-validation:
-  max_temperature_increase: 2
 
 valve_info:
   r1:

@@ -121,6 +121,8 @@ class Config(BaseModel):
     min_fill_time: float | None = None
     max_fill_time: float | None = None
 
+    max_temperature_increase: float = 0.0
+
     verbose: bool = False
     quiet: bool = False
     notify: bool = True
@@ -216,6 +218,7 @@ class Config(BaseModel):
             "max_fill_time",
             "max_pressure",
             "max_temperature",
+            "max_temperature_increase",
         ]:
             default_value = defaults.get(field, None)
             if field not in data or data[field] is None:

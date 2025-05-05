@@ -18,7 +18,7 @@ import polars
 
 from sdsstools.logger import SDSSLogger
 
-from lvmcryo.config import get_internal_config
+from lvmcryo.config import Config
 from lvmcryo.handlers.ln2 import LN2Handler
 from lvmcryo.tools import get_fake_logger
 
@@ -57,7 +57,7 @@ def log_or_raise(
 
 def validate_fill(
     ln2_handler: LN2Handler,
-    data: polars.DataFrame | pathlib.Path | str,
+    config: Config,
     log: logging.Logger | SDSSLogger | None = None,
     raise_on_error: bool = False,
 ) -> tuple[bool, str | None] | NoReturn:
@@ -85,8 +85,11 @@ def validate_fill(
 
     """
 
-    config = get_internal_config()
-    max_temperature_increase = config["validation.max_temperature_increase"]
+    data = config.data_path
+    if data is None:
+        return (True, "No data path was provided.")
+
+    max_temperature_increase = config.max_temperature_increase or 0.0
 
     log_p = partial(log_or_raise, log, raise_on_error)
     log_p("Validating post-fill data.")
@@ -145,13 +148,20 @@ def validate_fill(
                 temp0 = ln2_temp[0, column]
                 temp1 = ln2_temp[-1, column]
 
-                if temp1 > (temp0 + max_temperature_increase):
-                    failed = True
-                    error = (
+                # Check if the temperature increased after the fill. If the temperature
+                # increased but withing the threshold, log a warning. Otherwise, fail
+                # the validation.
+                if temp1 > temp0:
+                    msg = (
                         f"LN2 temperature for camera {camera} increased "
                         f"from {temp0:.2f} to {temp1:.2f} degC after the fill."
                     )
-                    log_p(error, level=logging.ERROR)
-                    break
+
+                    if temp1 > (temp0 + max_temperature_increase):
+                        failed = True
+                        log_p(msg, level=logging.ERROR)
+                        break
+                    else:
+                        log_p(msg, level=logging.WARNING)
 
     return (failed, error)

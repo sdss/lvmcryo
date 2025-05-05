@@ -636,7 +636,7 @@ async def ln2(
             ):
                 validate_failed, validate_error = validate_fill(
                     handler,
-                    config.data_path,
+                    config,
                     log=log,
                 )
                 if validate_failed and error is None:
