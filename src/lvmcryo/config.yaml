@@ -9,7 +9,7 @@ defaults:
   max_fill_time: 360
   log_path: '/data/logs/lvmcryo/{timestamp}.log'
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
-  max_temperature_increase: 2
+  max_temperature_increase: 1
 
 profiles:
   production:
