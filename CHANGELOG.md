@@ -1,6 +1,6 @@
 # Changelog
 
-## Next version
+## 0.3.12 - 2025-05-06
 
 ### ✨ Improved
 
