@@ -5,6 +5,7 @@
 ### ✨ Improved
 
 * Add log message indicating successful fill validation.
+* Add `--config-file` to `list-profiles`.
 
 
 ## 0.3.12 - 2025-05-06

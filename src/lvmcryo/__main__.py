@@ -104,8 +104,7 @@ async def ln2(
             dir_okay=False,
             exists=True,
             envvar="LVMCRYO_CONFIG_FILE",
-            help="The configuration file to use to set the default values. "
-            "Defaults to the internal configuration file.",
+            help="The configuration file. Defaults to the internal configuration file.",
         ),
     ] = None,
     dry_run: Annotated[
@@ -709,12 +708,22 @@ async def _close_valves_helper():
 
 
 @cli.command("list-profiles")
-def list_profiles():
+def list_profiles(
+    config_file: Annotated[
+        Optional[pathlib.Path],
+        Option(
+            dir_okay=False,
+            exists=True,
+            envvar="LVMCRYO_CONFIG_FILE",
+            help="The configuration file. Defaults to the internal configuration file.",
+        ),
+    ] = None,
+):
     """Lists the available profiles."""
 
     from lvmcryo.config import get_internal_config
 
-    internal_config = get_internal_config()
+    internal_config = get_internal_config(config_file=config_file)
     profiles = internal_config["profiles"]
 
     for profile in profiles:
