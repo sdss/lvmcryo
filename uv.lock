@@ -646,7 +646,7 @@ wheels = [
 
 [[package]]
 name = "lvmcryo"
-version = "0.3.12"
+version = "0.3.13a0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
