@@ -6,6 +6,7 @@
 
 * Add log message indicating successful fill validation.
 * Add `--config-file` to `list-profiles`.
+* Make `get_internal_config()` aware of the `LVMCRYO_CONFIG_FILE` environment variable.
 
 
 ## 0.3.12 - 2025-05-06

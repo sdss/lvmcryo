@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import datetime
+import os
 import pathlib
 import warnings
 from enum import Enum
@@ -26,7 +27,7 @@ from pydantic import (
     model_validator,
 )
 
-from sdsstools.configuration import Configuration, read_yaml_file
+from sdsstools.configuration import Configuration
 
 
 class Actions(str, Enum):
@@ -83,9 +84,10 @@ def get_internal_config(path: pathlib.Path | str | None = None) -> Configuration
     """Returns the internal configuration."""
 
     default_path = pathlib.Path(__file__).parent / "config.yaml"
+    envvar_config_file = os.environ.get("LVMCRYO_CONFIG_FILE", None)
 
-    if path is None:
-        return read_yaml_file(default_path)
+    if path is None and envvar_config_file is not None:
+        path = envvar_config_file
 
     return Configuration(path, base_config=default_path)
 
