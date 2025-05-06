@@ -646,6 +646,8 @@ async def ln2(
                     )
                     handler.failed = True
                     error = validate_error
+                elif not validate_failed:
+                    log.info("Fill validation completed successfully.")
 
             log.info("Writing fill metadata to database.")
             await db_handler.write(complete=True, plot_paths=plot_paths, error=error)

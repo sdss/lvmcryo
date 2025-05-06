@@ -1,5 +1,12 @@
 # Changelog
 
+## Next version
+
+### ✨ Improved
+
+* Add log message indicating successful fill validation.
+
+
 ## 0.3.12 - 2025-05-06
 
 ### ✨ Improved
