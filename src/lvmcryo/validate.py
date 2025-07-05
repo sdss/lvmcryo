@@ -160,6 +160,7 @@ def validate_fill(
                     if temp1 > (temp0 + max_temperature_increase):
                         failed = True
                         log_p(msg, level=logging.ERROR)
+                        error = msg
                         break
                     else:
                         log_p(msg, level=logging.WARNING)
