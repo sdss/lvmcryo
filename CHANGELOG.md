@@ -7,6 +7,11 @@
 * When validation failed, the error message was not being returned, which caused the email notification to indicate a successful fill.
 
 
+### ⚙️ Engineering
+
+* Use `uv_build` as build backend.
+
+
 ## 0.3.13 - 2025-05-07
 
 ### ✨ Improved
