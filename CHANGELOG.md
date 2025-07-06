@@ -1,11 +1,10 @@
 # Changelog
 
-## Next release
+## 0.3.14 - 2025-07-05
 
 ### 🔧 Fixed
 
 * When validation failed, the error message was not being returned, which caused the email notification to indicate a successful fill.
-
 
 ### ⚙️ Engineering
 
