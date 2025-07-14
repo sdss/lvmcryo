@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### ⚙️ Engineering
+
+* Pin `numpy` to `<2.3.0` to allow issues with CentOS 7.
+
+
 ## 0.3.14 - 2025-07-05
 
 ### 🔧 Fixed
