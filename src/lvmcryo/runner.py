@@ -56,6 +56,10 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     handler.event_times.end_time = get_now()
 
     log.error("Exiting now. No data or notifications will be sent.")
+
+    # Prevent the event loop from throwing some exception when we exit.
+    asyncio.get_running_loop().stop()
+
     sys.exit(1)
 
 
