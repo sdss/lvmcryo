@@ -316,6 +316,10 @@ class LN2Handler:
 
         """
 
+        if self.failed or self.aborted:
+            self.fail("Cannot start a purge after a failure or abort.")
+            return
+
         if purge_valve is None:
             purge_valve = self.purge_valve
 
@@ -399,6 +403,10 @@ class LN2Handler:
             A callback to run before opening the fill valves.
 
         """
+
+        if self.failed or self.aborted:
+            self.fail("Cannot start a fill after a failure or abort.")
+            return
 
         cameras = cameras or self.cameras
         if cameras is None or len(cameras) == 0:
