@@ -2,6 +2,12 @@
 
 ## Next release
 
+### ✨ Improved
+
+* Check if aborted/failed before starting purge/fill.
+* Prevent race conditions while aborting a fill.purge due to SIGINT/SIGTERM.
+* More graceful exit on SIGINT/SIGTERM.
+
 ### ⚙️ Engineering
 
 * Pin `numpy` to `<2.3.0` to allow issues with CentOS 7.
