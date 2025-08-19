@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### 🔧 Fixed
+
+* Fix turning on/off of all ion pumps at once.
+
+
 ## 0.3.15 - 2025-07-30
 
 ### ✨ Improved

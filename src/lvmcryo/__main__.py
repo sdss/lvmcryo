@@ -781,6 +781,8 @@ async def ion(
     from lvmopstools.devices.ion import read_ion_pumps, toggle_ion_pump
     from lvmopstools.devices.specs import Spectrographs, spectrograph_pressures
 
+    from lvmcryo.config import get_internal_config
+
     cameras = list(map(lambda x: x.lower(), cameras)) if cameras else ["all"]
 
     if "all" in cameras:
@@ -818,6 +820,10 @@ async def ion(
         return
 
     error: bool = False
+
+    if cameras == ["all"]:
+        config = get_internal_config()
+        cameras: list[str] = config["defaults"]["cameras"]
 
     for camera in cameras:
         try:
