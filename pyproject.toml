@@ -24,16 +24,8 @@ dependencies = [
     "numpy<2.3.0"
 ]
 
-[project.urls]
-Homepage = "https://github.com/sdss/lvmcryo"
-Repository = "https://github.com/sdss/lvmcryo"
-
-[project.scripts]
-lvmcryo = "lvmcryo.__main__:cli"
-
-[tool.uv]
-package = true
-dev-dependencies = [
+[project.optional-dependencies]
+dev = [
     "ipython>=8.0.0",
     "ipdb>=0.13.13",
     "ruff>=0.6.0",
@@ -43,6 +35,16 @@ dev-dependencies = [
     "pytest-mock>=3.14.0",
     "pytest-asyncio>=0.24.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sdss/lvmcryo"
+Repository = "https://github.com/sdss/lvmcryo"
+
+[project.scripts]
+lvmcryo = "lvmcryo.__main__:cli"
+
+[tool.uv]
+package = true
 
 [tool.ruff]
 line-length = 88

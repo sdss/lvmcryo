@@ -7,6 +7,10 @@
 * Fix turning on/off of all ion pumps at once.
 * Prevent O2 alert not being detected when the API is returning no valid alerts data.
 
+### ⚙️ Engineering
+
+* Replace `[tool.uv.dev-dependencies]` with a `[project.optional-dependencies.dev]` in `pyproject.toml`.
+
 
 ## 0.3.15 - 2025-07-30
 
