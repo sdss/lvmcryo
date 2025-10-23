@@ -250,18 +250,18 @@ def get_fake_logger():
 async def o2_alert(route: str = "http://lvm-hub.lco.cl:8090/api/alerts"):
     """Is there an active O2 alert?"""
 
-    try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.get(route)
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.get(route)
 
-        if response.status_code != 200:
-            raise RuntimeError(response.text)
+    if response.status_code != 200:
+        raise RuntimeError(response.text)
+    else:
+        alerts = response.json()
+        if len(alerts["o2_room_alerts"]) == 0:
+            raise RuntimeError("No O2 alert data returned by the API.")
         else:
-            alerts = response.json()
+            # This is true if any of the room alerts are active.
             return alerts["o2_alert"]
-
-    except Exception as ee:
-        raise RuntimeError(f"Error reading alerts: {ee}")
 
 
 @Retrier(max_attempts=3, delay=0.5)
