@@ -823,7 +823,11 @@ async def ion(
 
     if cameras == ["all"]:
         config = get_internal_config()
-        cameras: list[str] = config["defaults"]["cameras"]
+        cameras = config["defaults"]["cameras"]
+
+    if cameras is None:
+        err_console.print("[red]No cameras were specified.[/]")
+        raise typer.Exit(1)
 
     for camera in cameras:
         try:
