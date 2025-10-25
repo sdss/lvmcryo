@@ -2,6 +2,10 @@
 
 ## Next release
 
+### ✨ Improved
+
+* Include date and time of fill in email subject.
+
 ### 🔧 Fixed
 
 * Fix turning on/off of all ion pumps at once.

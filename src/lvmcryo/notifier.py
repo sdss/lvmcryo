@@ -303,12 +303,21 @@ class Notifier:
                 f"Information about the fill can be found at <{lvmweb_url}|this link>."
             )
 
+        date: str | None = None
+        if handler and handler.event_times:
+            start_time = handler.event_times.start_time
+            date = start_time.strftime("%Y-%m-%d %H:%M %Z")
+
         if send_email:
             subject: str = (
                 "SUCCESS: LVM LN2 fill completed"
                 if success
                 else "ERROR: LVM LN2 fill failed"
             )
+
+            if date is not None:
+                subject += f" ({date})"
+
             plain_message: str = (
                 "LN2 fill completed successfully."
                 if success
