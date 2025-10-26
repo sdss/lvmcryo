@@ -6,6 +6,10 @@
 
 * Fix validation of `ThermistorConfig` caused by a change in behaviour in `pydantic` 2.12. As a result `lvmcryo` 0.3.16 has been yanked.
 
+### ⚙️ Engineering
+
+* Add very basic testing for `LN2Handler`.
+
 
 ## 0.3.16 - 2025-10-25
 
