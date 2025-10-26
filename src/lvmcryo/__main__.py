@@ -20,6 +20,7 @@ from rich.console import Console
 from typer import Argument, Option
 from typer.core import TyperGroup
 
+from lvmcryo import __version__
 from lvmcryo.config import Actions, InteractiveMode, NotificationLevel
 from lvmcryo.tools import DBHandler
 
@@ -64,6 +65,29 @@ cli = typer.Typer(
     no_args_is_help=True,
     help="CLI for LVM cryostats.",
 )
+
+
+def version_callback(value: bool):
+    if value:
+        typer.echo(f"lcmcryo {__version__}")
+        raise typer.Exit()
+
+
+@cli.callback()
+def main(
+    version: Annotated[
+        Optional[bool],
+        Option(
+            "--version",
+            "-V",
+            help="Show the version and exit.",
+            is_eager=True,
+            callback=version_callback,
+        ),
+    ] = None,
+):
+    """CLI for LVM cryostats."""
+    pass
 
 
 @cli.command("ln2")

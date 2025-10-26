@@ -2,6 +2,10 @@
 
 ## Next release
 
+### ✨ Improved
+
+* Add `--version` flag to the CLI.
+
 ### 🔧 Fixed
 
 * Fix validation of `ThermistorConfig` caused by a change in behaviour in `pydantic` 2.12. As a result `lvmcryo` 0.3.16 has been yanked.
