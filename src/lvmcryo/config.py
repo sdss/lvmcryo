@@ -52,11 +52,11 @@ class NotificationLevel(str, Enum):
 class ThermistorConfig(BaseModel):
     """Thermistor configuration model."""
 
-    channel: str | None = None
-    monitoring_interval: float = 1.0
-    close_valve: bool = True
-    required_active_time: float = 10.0
-    disabled: bool = False
+    channel: str | None = Field(default=None)
+    monitoring_interval: float = Field(default=1.0)
+    close_valve: bool = Field(default=True)
+    required_active_time: float = Field(default=10.0)
+    disabled: bool = Field(default=False)
 
 
 class ValveConfig(BaseModel):
@@ -65,6 +65,19 @@ class ValveConfig(BaseModel):
     actor: str
     outlet: str
     thermistor: ThermistorConfig | None = Field(default_factory=ThermistorConfig)
+
+    @field_validator("thermistor", mode="before")
+    @classmethod
+    def validate_thermistor(cls, value: Any) -> ThermistorConfig:
+        """Validates the thermistor configuration."""
+
+        if value is None:
+            return ThermistorConfig()
+
+        if isinstance(value, ThermistorConfig):
+            return value
+
+        return ThermistorConfig(**value)
 
     @model_validator(mode="after")
     def validate_after(self) -> Self:

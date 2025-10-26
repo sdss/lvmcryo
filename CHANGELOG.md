@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### 🔧 Fixed
+
+* Fix validation of `ThermistorConfig` caused by a change in behaviour in `pydantic` 2.12. As a result `lvmcryo` 0.3.16 has been yanked.
+
+
 ## 0.3.16 - 2025-10-25
 
 ### ✨ Improved
