@@ -82,7 +82,7 @@ def get_valve_info():
 
 @dataclass
 class LN2Handler:
-    """The main LN2 purge/fill handlerclass.
+    """The main LN2 purge/fill handler class.
 
     Parameters
     ----------
@@ -112,6 +112,8 @@ class LN2Handler:
     dry_run: bool = False
     alerts_route: str | None = "http://lvm-hub.lco.cl:8090/api/alerts"
 
+    monitor_alerts: bool = True
+
     def __post_init__(self):
         if self.interactive:
             console = getattr(self.log, "rich_console", None)
@@ -140,9 +142,9 @@ class LN2Handler:
                 dry_run=self.dry_run,
             )
 
-        self._alerts_monitor_task: asyncio.Task | None = asyncio.create_task(
-            self.monitor_alerts()
-        )
+        self._alerts_monitor_task: asyncio.Task | None = None
+        if self.monitor_alerts:
+            self._alerts_monitor_task = asyncio.create_task(self._monitor_alerts())
 
         self.event_times = EventDict()
 
@@ -560,7 +562,7 @@ class LN2Handler:
             )
         )
 
-    async def monitor_alerts(self):
+    async def _monitor_alerts(self):
         """Monitors the system alerts and aborts the fill if necessary."""
 
         if not self.alerts_route:
