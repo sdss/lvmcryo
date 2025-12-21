@@ -250,6 +250,9 @@ def get_fake_logger():
 async def o2_alert(route: str = "http://lvm-hub.lco.cl:8090/api/alerts"):
     """Is there an active O2 alert?"""
 
+    # HOTFIX: disable this check temporarily since one sensor is faulty.
+    return False
+
     async with httpx.AsyncClient(follow_redirects=True) as client:
         response = await client.get(route)
 
