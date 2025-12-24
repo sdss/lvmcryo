@@ -1,6 +1,6 @@
 [project]
 name = "lvmcryo"
-version = "0.3.18a1"
+version = "0.3.18"
 description = "LVM cryostat tools"
 authors = [
     { name = "José Sánchez-Gallego", email = "gallegoj@uw.edu" }
