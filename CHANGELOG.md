@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### ✨ Improved
+
+* [#14](https://github.com/sdss/lvmcryo/pull/14) Add `--no-check-o2-sensors` flag to `lvmcryo ln2` command to disable O2 sensor checks during fill/purge.
+
+
 ## 0.3.17 - 2025-10-26
 
 ### ✨ Improved

@@ -121,6 +121,7 @@ async def ln2_runner(
         max_pressure=max_pressure,
         max_temperature=max_temperature,
         check_thermistors=config.use_thermistors,
+        check_o2_sensors=config.check_o2_sensors,
     )
 
     # Register signals that will trigger a valve shutdown and clean exit.
