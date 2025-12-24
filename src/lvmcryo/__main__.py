@@ -219,6 +219,14 @@ async def ln2(
             rich_help_panel="Purge and fill options",
         ),
     ] = True,
+    check_o2_sensors: Annotated[
+        bool,
+        Option(
+            " /--no-check-o2-sensors",
+            help="Aborts purge/fill if the oxygen sensor reads below the limit.",
+            rich_help_panel="Purge and fill options",
+        ),
+    ] = True,
     max_pressure: Annotated[
         Optional[float],
         Option(
@@ -478,6 +486,7 @@ async def ln2(
             require_all_thermistors=require_all_thermistors,
             check_pressures=check_pressures,
             check_temperatures=check_temperatures,
+            check_o2_sensors=check_o2_sensors,
             max_pressure=max_pressure,
             max_temperature=max_temperature,
             purge_time=purge_time,
@@ -558,6 +567,7 @@ async def ln2(
         valve_info=config.valve_info,
         dry_run=config.dry_run,
         alerts_route=config.internal_config["api_routes"]["alerts"],
+        check_o2_sensors=config.check_o2_sensors,
     )
 
     if LOCKFILE.exists() and config.clear_lock:

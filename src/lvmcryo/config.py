@@ -125,8 +125,11 @@ class Config(BaseModel):
 
     use_thermistors: bool = True
     require_all_thermistors: bool = False
+
     check_pressures: bool = True
     check_temperatures: bool = True
+    check_o2_sensors: bool = True
+
     max_pressure: float | None = None
     max_temperature: float | None = None
     purge_time: float | None = None

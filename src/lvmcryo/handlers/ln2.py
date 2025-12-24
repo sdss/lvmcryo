@@ -101,6 +101,8 @@ class LN2Handler:
         Does not actually operate the valves.
     alerts_route
         The API route to query system alerts.
+    check_o2_sensors
+        Whether to check O2 sensors during a fill/purge.
 
     """
 
@@ -111,6 +113,7 @@ class LN2Handler:
     valve_info: dict[str, ValveConfig] = field(default_factory=get_valve_info)
     dry_run: bool = False
     alerts_route: str | None = "http://lvm-hub.lco.cl:8090/api/alerts"
+    check_o2_sensors: bool = True
 
     monitor_alerts: bool = True
 
@@ -169,6 +172,7 @@ class LN2Handler:
         max_pressure: float | None = None,
         max_temperature: float | None = None,
         check_thermistors: bool = True,
+        check_o2_sensors: bool = True,
     ):
         """Checks if the pressure and temperature are in the allowed range.
 
@@ -183,6 +187,8 @@ class LN2Handler:
             The maximum temperature to allow.
         check_thermistors
             Checks that the thermistors are reading correctly.
+        check_o2_sensors
+            Checks that the oxygen sensors are reading correctly.
 
         Raises
         ------
@@ -198,11 +204,12 @@ class LN2Handler:
             self.log.warning("No alerts route provided. Not checking O2 alarms.")
         else:
             try:
-                self.log.info("Checking for O2 alarms ...")
-                if await o2_alert(self.alerts_route):
-                    self.fail("O2 alarm detected.")
-                else:
-                    self.log.debug("No O2 alarms reported.")
+                if check_o2_sensors:
+                    self.log.info("Checking for O2 alarms ...")
+                    if await o2_alert(self.alerts_route):
+                        self.fail("O2 alarm detected.")
+                    else:
+                        self.log.debug("No O2 alarms reported.")
             except Exception as err:
                 self.fail(f"Error checking O2 alarms: {err}")
 
@@ -573,7 +580,7 @@ class LN2Handler:
 
         while True:
             try:
-                if await o2_alert(self.alerts_route):
+                if self.check_o2_sensors and await o2_alert(self.alerts_route):
                     await self.abort(
                         error="O2 alarm detected: closing valves and aborting.",
                         close_valves=True,
