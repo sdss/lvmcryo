@@ -622,11 +622,16 @@ async def ln2(
         # Log the traceback to file but do not print.
         orig_sh_level = log.sh.level
         log.sh.setLevel(1000)
+
         log.exception(f"Error during {action.value}.", exc_info=err)
+        if isinstance(err, asyncio.TimeoutError):
+            log.error("One or more operations timed out.")
+
         log.sh.setLevel(orig_sh_level)
 
         # Fail the action.
         handler.failed = True
+        skip_finally = True
 
         error = err
         if config.with_traceback:
