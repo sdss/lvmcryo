@@ -57,12 +57,12 @@ echo -e "${GREEN}OK${NC}"
 # Start purge and fill
 echo -e "${BLUE}Starting purge and fill ... ${NC}\n"
 if ! lvmcryo ln2 --profile manual-fill; then
-    echo -e "${RED}FILL FAILED - Please report this error.${NC}"
+    echo -e "${RED}FILL FAILED - Please report this error.${NC}\n"
     lvmcryo close-valves
     pyenv shell --unset
     exit 1
 fi
-echo -e "\n${GREEN}FILL COMPLETED SUCCESSFULLY${NC}"
+echo -e "\n${GREEN}FILL COMPLETED SUCCESSFULLY${NC}\n"
 pyenv shell --unset
 
 # Exit successfully
