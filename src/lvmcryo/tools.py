@@ -494,15 +494,17 @@ def run_command(
     if result.returncode == 0:
         return result
 
+    command = command if isinstance(command, str) else " ".join(command)
+    error_msg = f"Command '{command}' failed with return code {result.returncode}."
+
     if output_on_error:
+        console.print(f"[red]{error_msg}[/red]")
         if result.stdout:
             console.print(f"[yellow]\nSTDOUT:[/yellow]\n{result.stdout}")
         if result.stderr:
             console.print(f"[red]\nSTDERR:[/red]\n{result.stderr}")
 
     if raise_on_error:
-        command = command if isinstance(command, str) else " ".join(command)
-        error_msg = f"Command '{command}' failed with return code {result.returncode}."
         raise RuntimeError(error_msg)
 
     return result

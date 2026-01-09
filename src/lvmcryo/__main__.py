@@ -946,17 +946,38 @@ def auto_fill(
 
     try:
         if action == AutoFillAction.enable:
-            run_command(["kubectl", "apply", "-f", CRONJOB_PATH], output_on_error=True)
+            run_command(
+                ["kubectl", "apply", "-f", CRONJOB_PATH],
+                output_on_error=True,
+                raise_on_error=True,
+            )
             info_console.print("[green]Auto-fill enabled.[/]")
         elif action == AutoFillAction.disable:
-            run_command(["kubectl", "delete", "-f", CRONJOB_PATH], output_on_error=True)
+            run_command(
+                ["kubectl", "delete", "-f", CRONJOB_PATH],
+                output_on_error=True,
+                raise_on_error=True,
+            )
             info_console.print("[yellow]Auto-fill disabled.[/]")
         elif action == AutoFillAction.restart:
-            run_command(["kubectl", "delete", "-f", CRONJOB_PATH], output_on_error=True)
-            run_command(["kubectl", "apply", "-f", CRONJOB_PATH], output_on_error=True)
+            run_command(
+                ["kubectl", "delete", "-f", CRONJOB_PATH],
+                output_on_error=True,
+                raise_on_error=True,
+            )
+            run_command(
+                ["kubectl", "apply", "-f", CRONJOB_PATH],
+                output_on_error=True,
+                raise_on_error=True,
+            )
             info_console.print("[green]Auto-fill restarted.[/]")
-    except (RuntimeError, FileNotFoundError) as err:
-        err_console.print(f"[red]Error updating auto-fill:[/] {err}")
+    except FileNotFoundError:
+        err_console.print(
+            "[red]kubectl not found. Is Kubernetes installed on this system?[/]"
+        )
+        raise typer.Exit(1)
+    except RuntimeError:
+        # Just exit with error. run_commnad should have output the error message.
         raise typer.Exit(1)
 
 
