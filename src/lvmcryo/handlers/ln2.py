@@ -617,6 +617,7 @@ class LN2Handler:
 
             await asyncio.sleep(3)
 
+    @Retrier(max_attempts=3, delay=2)
     async def stop(self, close_valves: bool = True, only_active: bool = True):
         """Cancels ongoing fills and closes the valves.
 
