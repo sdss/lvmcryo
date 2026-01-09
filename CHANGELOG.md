@@ -2,6 +2,10 @@
 
 ## Next release
 
+### 🚀 New
+
+* Add a `manual-fill.sh` script to perform a manual LN2 fill.
+
 ### ✨ Improved
 
 * Monitor lock file and abort if it is deleted during operation.
