@@ -15,12 +15,13 @@ import logging
 import os
 import pathlib
 import subprocess
+import sys
 import time
 from contextlib import suppress
 from functools import partial
 from logging import FileHandler, getLogger
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 import httpx
 from jedi.inference.value.iterable import Sequence
@@ -218,12 +219,29 @@ class LockExistsError(RuntimeError):
     pass
 
 
-async def _monitor_lockfile(lockfile: pathlib.Path):
+async def _monitor_lockfile(
+    lockfile: pathlib.Path,
+    exit: bool = False,
+    console: Console | None = None,
+    on_release_callback: Callable[..., Any] | Coroutine | None = None,
+):
     """Monitors a lock file and raises an error if it is deleted."""
+
+    console = console or Console()
 
     while True:
         if not lockfile.exists():
-            raise RuntimeError(f"Lock file {lockfile} has been deleted.")
+            if on_release_callback:
+                if asyncio.iscoroutinefunction(on_release_callback):
+                    await on_release_callback()
+                else:
+                    on_release_callback()
+
+            if exit:
+                console.print(f"[red]Lock file {lockfile} has been released.[/]")
+                sys.exit(1)
+
+            raise RuntimeError(f"Lock file {lockfile} has been released.")
 
         await asyncio.sleep(1)
 
@@ -232,15 +250,22 @@ async def _monitor_lockfile(lockfile: pathlib.Path):
 async def ensure_lock(
     lockfile: str | os.PathLike | pathlib.Path,
     monitor: bool = False,
+    exit: bool = False,
+    on_release_callback: Callable[..., Any] | Coroutine | None = None,
+    console: Console | None = None,
 ):
     """Ensures a lock file is created and deleted on exit.
 
     Raises an exception if the lock file already exists. If ``monitor=True``,
     monitors the lock file and raises an error if it is deleted while the context
-    is active.
+    is active. If ``exit=False`` the task raises an exception instead of exiting.
+    ``exit=True`` can be useful in cases in which the exception raised by the task
+    cannot be collected. Specify a ``on_release_callback`` to call a function or
+    coroutine when the lock file is released externally.
 
     """
 
+    console = console or Console()
     lockfile = pathlib.Path(lockfile)
 
     if lockfile.exists():
@@ -252,7 +277,13 @@ async def ensure_lock(
 
     try:
         if monitor:
-            monitor_task = asyncio.create_task(_monitor_lockfile(lockfile))
+            monitor_task = asyncio.create_task(
+                _monitor_lockfile(
+                    lockfile,
+                    exit=exit,
+                    console=console,
+                )
+            )
         yield
     finally:
         await cancel_task(monitor_task)

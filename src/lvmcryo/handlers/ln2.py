@@ -674,24 +674,24 @@ class LN2Handler:
     @overload
     async def abort(
         self,
-        error: str | None,
-        close_valves: bool,
+        error: str | None = None,
+        close_valves: bool = False,
         raise_error: bool = True,
     ) -> NoReturn: ...
 
     @overload
     async def abort(
         self,
-        error: str | None,
-        close_valves: bool,
+        error: str | None = None,
+        close_valves: bool = False,
         raise_error: Literal[True] = True,
     ) -> NoReturn: ...
 
     @overload
     async def abort(
         self,
-        error: str | None,
-        close_valves: bool,
+        error: str | None = None,
+        close_valves: bool = False,
         raise_error: Literal[False] = False,
     ) -> None: ...
 

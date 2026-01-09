@@ -581,7 +581,12 @@ async def ln2(
         log.debug(f"Record {record_pk} created in the database.")
 
     try:
-        async with ensure_lock(LOCKFILE, monitor=True):
+        async with ensure_lock(
+            LOCKFILE,
+            monitor=True,
+            exit=True,
+            on_release_callback=handler.abort(raise_error=False, close_valves=True),
+        ):
             # Calculate the expected maximum run time.
             max_time: float = 2 * 3600  # It should never take longer than two hours.
             if config.max_purge_time is not None and config.max_fill_time is not None:
