@@ -21,10 +21,9 @@ from contextlib import suppress
 from functools import partial
 from logging import FileHandler, getLogger
 
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, Sequence
 
 import httpx
-from jedi.inference.value.iterable import Sequence
 from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn

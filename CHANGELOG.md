@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### 🔧 Fixed
+
+* Fix import of `Sequence` in `tools.py`.
+
+
 ## 0.4.0 - 2026-01-09
 
 ### 🚀 New
