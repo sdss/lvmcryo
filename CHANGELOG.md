@@ -2,6 +2,10 @@
 
 ## Next release
 
+### ✨ Improved
+
+* Unpin `numpy` version.
+
 ### 🔧 Fixed
 
 * Fix import of `Sequence` in `tools.py`.
