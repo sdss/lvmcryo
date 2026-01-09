@@ -5,6 +5,7 @@
 ### ✨ Improved
 
 * No need to run `pyenv shell --unset` in the manual fill script since it runs in its own shell.
+* Add wait time before starting manual fill to allow other fills to be aborted.
 
 
 ## 0.4.2 - 2026-01-09

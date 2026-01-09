@@ -44,6 +44,11 @@ if ! lvmcryo clear-lock > /dev/null 2>&1; then
 fi
 echo -e "${GREEN}OK${NC}"
 
+# Wait for other processes to abort
+echo -en "${LIGHT_GRAY}Waiting 15 seconds to allow other fills to be aborted ... ${NC}"
+sleep 15
+echo -e "${GREEN}OK${NC}"
+
 # Turn off ion pumps
 echo -en "${LIGHT_GRAY}Turning off ion pumps ... ${NC}"
 if ! lvmcryo ion --off > /dev/null 2>&1; then
