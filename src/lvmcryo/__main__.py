@@ -966,12 +966,7 @@ def auto_fill(
             info_console.print("[yellow]Auto-fill disabled.[/]")
         elif action == AutoFillAction.restart:
             run_command(
-                ["kubectl", "delete", "-f", CRONJOB_PATH],
-                output_on_error=True,
-                raise_on_error=True,
-            )
-            run_command(
-                ["kubectl", "apply", "-f", CRONJOB_PATH],
+                ["kubectl", "replace", "--force", "-f", CRONJOB_PATH],
                 output_on_error=True,
                 raise_on_error=True,
             )

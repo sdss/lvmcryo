@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### ✨ Improved
+
+* Replace auto-fill restart command.
+
+
 ## 0.4.1 - 2026-01-09
 
 ### ✨ Improved
