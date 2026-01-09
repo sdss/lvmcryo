@@ -588,7 +588,12 @@ async def ln2(
 
             # Run worker.
             await asyncio.wait_for(
-                ln2_runner(handler, config, notifier, db_handler=db_handler),
+                ln2_runner(
+                    handler,
+                    config,
+                    notifier,
+                    db_handler=db_handler,
+                ),
                 timeout=max_time,
             )
 
