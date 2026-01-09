@@ -40,7 +40,6 @@ fi
 echo -en "${LIGHT_GRAY}Clearing any existing locks and cancelling other fills ... ${NC}"
 if ! lvmcryo clear-lock > /dev/null 2>&1; then
     echo -e "${RED}FAILED${NC}"
-    pyenv shell --unset
     exit 1
 fi
 echo -e "${GREEN}OK${NC}"
@@ -49,7 +48,6 @@ echo -e "${GREEN}OK${NC}"
 echo -en "${LIGHT_GRAY}Turning off ion pumps ... ${NC}"
 if ! lvmcryo ion --off > /dev/null 2>&1; then
     echo -e "${RED}FAILED${NC}"
-    pyenv shell --unset
     exit 1
 fi
 echo -e "${GREEN}OK${NC}"
@@ -59,11 +57,9 @@ echo -e "${BLUE}Starting purge and fill ... ${NC}\n"
 if ! lvmcryo ln2 --profile manual-fill; then
     echo -e "${RED}FILL FAILED - Please report this error.${NC}\n"
     lvmcryo close-valves
-    pyenv shell --unset
     exit 1
 fi
 echo -e "\n${GREEN}FILL COMPLETED SUCCESSFULLY${NC}\n"
-pyenv shell --unset
 
 # Exit successfully
 exit 0

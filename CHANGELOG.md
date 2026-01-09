@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### ✨ Improved
+
+* No need to run `pyenv shell --unset` in the manual fill script since it runs in its own shell.
+
+
 ## 0.4.2 - 2026-01-09
 
 ### ✨ Improved
