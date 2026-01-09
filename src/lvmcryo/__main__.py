@@ -786,6 +786,19 @@ def list_profiles(
         print()
 
 
+@cli.command("clear-lock")
+def clear_lock():
+    """Clears the lock file if it exists."""
+
+    if LOCKFILE.exists():
+        LOCKFILE.unlink()
+        info_console.print("[green]Lock file removed.[/]")
+    else:
+        info_console.print("[yellow]No lock file found.[/]")
+
+    return typer.Exit(0)
+
+
 @cli.command("close-valves")
 @cli_coro()
 async def close_valves():
