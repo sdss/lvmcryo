@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### ✨ Improved
+
+* Ensure all valves are closed at the end of the LN2 fill process.
+
+
 ## 0.3.18 - 2025-12-24
 
 ### ✨ Improved

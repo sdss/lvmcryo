@@ -647,6 +647,16 @@ async def ln2(
 
         log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
 
+        # Make sure all valves are closed.
+        try:
+            log.info("Ensuring all valves are closed.")
+            await asyncio.wait_for(
+                handler.stop(only_active=False, close_valves=True),
+                timeout=30,
+            )
+        except Exception as err:
+            log.error(f"Error closing valves before exiting: {err}")
+
         if not skip_finally:
             # Do a quick update of the DB record since post_fill_tasks() may
             # block for a long time.
