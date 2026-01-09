@@ -580,7 +580,7 @@ async def ln2(
         log.debug(f"Record {record_pk} created in the database.")
 
     try:
-        with ensure_lock(LOCKFILE):
+        async with ensure_lock(LOCKFILE, monitor=True):
             # Calculate the expected maximum run time.
             max_time: float = 2 * 3600  # It should never take longer than two hours.
             if config.max_purge_time is not None and config.max_fill_time is not None:
@@ -628,7 +628,7 @@ async def ln2(
         orig_sh_level = log.sh.level
         log.sh.setLevel(1000)
 
-        log.exception(f"Error during {action.value}.", exc_info=err)
+        log.exception(f"Error during {action.value}: {err!s}", exc_info=err)
         if isinstance(err, asyncio.TimeoutError):
             log.error("One or more operations timed out.")
 

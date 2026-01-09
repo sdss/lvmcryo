@@ -216,11 +216,26 @@ class LockExistsError(RuntimeError):
     pass
 
 
-@contextlib.contextmanager
-def ensure_lock(lockfile: str | os.PathLike | pathlib.Path):
+async def _monitor_lockfile(lockfile: pathlib.Path):
+    """Monitors a lock file and raises an error if it is deleted."""
+
+    while True:
+        if not lockfile.exists():
+            raise RuntimeError(f"Lock file {lockfile} has been deleted.")
+
+        await asyncio.sleep(1)
+
+
+@contextlib.asynccontextmanager
+async def ensure_lock(
+    lockfile: str | os.PathLike | pathlib.Path,
+    monitor: bool = False,
+):
     """Ensures a lock file is created and deleted on exit.
 
-    Raises an exception if the lock file already exists.
+    Raises an exception if the lock file already exists. If ``monitor=True``,
+    monitors the lock file and raises an error if it is deleted while the context
+    is active.
 
     """
 
@@ -231,9 +246,14 @@ def ensure_lock(lockfile: str | os.PathLike | pathlib.Path):
 
     lockfile.touch()
 
+    monitor_task: asyncio.Task | None = None
+
     try:
+        if monitor:
+            monitor_task = asyncio.create_task(_monitor_lockfile(lockfile))
         yield
     finally:
+        await cancel_task(monitor_task)
         lockfile.unlink()
 
 

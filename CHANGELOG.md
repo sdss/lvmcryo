@@ -4,6 +4,7 @@
 
 ### ✨ Improved
 
+* Monitor lock file and abort if it is deleted during operation.
 * Ensure all valves are closed at the end of the LN2 fill process.
 * Do not run post-fill validation if the fill was aborted or failed.
 * Add retrier for `LN2Handler.stop()`.
