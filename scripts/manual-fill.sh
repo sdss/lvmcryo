@@ -18,10 +18,11 @@ else
     LVMCRYO_ENV="lvmcryo"
 fi
 
-# Load the environment
-pyenv shell "${LVMCRYO_ENV}"
-
 echo -e "${YELLOW}Starting manual fill procedure ... ${NC}"
+
+# Load the environment
+echo -en "${LIGHT_GRAY}Loading lvmcryo environment (${LVMCRYO_ENV}) ... ${NC}"
+pyenv shell "${LVMCRYO_ENV}"
 
 # Disable auto fills
 echo -en "${LIGHT_GRAY}Disabling automatic fills ... ${NC}"
