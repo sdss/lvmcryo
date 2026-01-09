@@ -5,6 +5,7 @@
 ### 🚀 New
 
 * Add a `manual-fill.sh` script to perform a manual LN2 fill.
+* Add `lvmcryo auto-fill` command to enable/disable automatic fills via a cronjob.
 
 ### ✨ Improved
 

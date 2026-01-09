@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import enum
 import pathlib
 import signal
 from functools import wraps
@@ -22,7 +23,7 @@ from typer.core import TyperGroup
 
 from lvmcryo import __version__
 from lvmcryo.config import Actions, InteractiveMode, NotificationLevel
-from lvmcryo.tools import DBHandler
+from lvmcryo.tools import DBHandler, run_command
 
 
 LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
@@ -919,6 +920,44 @@ async def ion(
             error = True
 
     return typer.Exit(error)
+
+
+class AutoFillAction(enum.Enum):
+    """Auto-fill actions."""
+
+    enable = "enable"
+    disable = "disable"
+    restart = "restart"
+
+
+@cli.command("auto-fill")
+def auto_fill(
+    action: Annotated[
+        AutoFillAction,
+        Argument(
+            help="Auto-fill action.",
+            case_sensitive=False,
+        ),
+    ],
+):
+    """Enables or disables the auto-fill procedure."""
+
+    CRONJOB_PATH = "/home/sdss5/config/kube/cronjobs/ln2fill_2_fills.yml"
+
+    try:
+        if action == AutoFillAction.enable:
+            run_command(["kubectl", "apply", "-f", CRONJOB_PATH], output_on_error=True)
+            info_console.print("[green]Auto-fill enabled.[/]")
+        elif action == AutoFillAction.disable:
+            run_command(["kubectl", "delete", "-f", CRONJOB_PATH], output_on_error=True)
+            info_console.print("[yellow]Auto-fill disabled.[/]")
+        elif action == AutoFillAction.restart:
+            run_command(["kubectl", "delete", "-f", CRONJOB_PATH], output_on_error=True)
+            run_command(["kubectl", "apply", "-f", CRONJOB_PATH], output_on_error=True)
+            info_console.print("[green]Auto-fill restarted.[/]")
+    except (RuntimeError, FileNotFoundError) as err:
+        err_console.print(f"[red]Error updating auto-fill:[/] {err}")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import pathlib
+import subprocess
 import time
 from contextlib import suppress
 from functools import partial
@@ -22,6 +23,7 @@ from logging import FileHandler, getLogger
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from jedi.inference.value.iterable import Sequence
 from jinja2 import Environment, FileSystemLoader
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskID, TextColumn
@@ -440,3 +442,67 @@ class DBHandler:
             self.pk = response.json()
 
         return self.pk
+
+
+def run_command(
+    command: str | Sequence[str],
+    output_on_error: bool = False,
+    raise_on_error: bool = False,
+    console: Console | None = None,
+    **kwargs,
+) -> subprocess.CompletedProcess:
+    """Runs a shell command and returns the completed process.
+
+    Parameters
+    ----------
+    command
+        The command to run.
+    output_on_error
+        If :obb:`True`, outputs the error message with stdout and stderr
+        if the command fails.
+    raise_on_error
+        If :obj:`True`, raises a :obj:`RuntimeError` if the command fails.
+    console
+        An optional :obj:`rich.console.Console` to use for output.
+    **kwargs
+        Additional arguments to pass to :obj:`subprocess.run`.
+
+    Returns
+    -------
+    subprocess.CompletedProcess
+        The completed process.
+
+    Raises
+    ------
+    RuntimeError
+        If the command fails.
+
+    """
+
+    console = console or Console()
+
+    text = kwargs.pop("text", True)
+    capture_output = kwargs.pop("capture_output", True)
+
+    result = subprocess.run(
+        command,
+        text=text,
+        capture_output=capture_output,
+        **kwargs,
+    )
+
+    if result.returncode == 0:
+        return result
+
+    if output_on_error:
+        if result.stdout:
+            console.print(f"[yellow]\nSTDOUT:[/yellow]\n{result.stdout}")
+        if result.stderr:
+            console.print(f"[red]\nSTDERR:[/red]\n{result.stderr}")
+
+    if raise_on_error:
+        command = command if isinstance(command, str) else " ".join(command)
+        error_msg = f"Command '{command}' failed with return code {result.returncode}."
+        raise RuntimeError(error_msg)
+
+    return result
