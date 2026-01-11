@@ -21,9 +21,7 @@ from rich.console import Console
 from typer import Argument, Option
 from typer.core import TyperGroup
 
-from lvmcryo import __version__
 from lvmcryo.config import Actions, InteractiveMode, NotificationLevel
-from lvmcryo.tools import DBHandler, run_command
 
 
 LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
@@ -69,6 +67,8 @@ cli = typer.Typer(
 
 
 def version_callback(value: bool):
+    from lvmcryo import __version__
+
     if value:
         typer.echo(f"lcmcryo {__version__}")
         raise typer.Exit()
@@ -439,6 +439,7 @@ async def ln2(
     from lvmcryo.notifier import Notifier
     from lvmcryo.runner import ln2_runner, post_fill_tasks
     from lvmcryo.tools import (
+        DBHandler,
         LockExistsError,
         add_json_handler,
         ensure_lock,
@@ -946,6 +947,8 @@ def auto_fill(
     ],
 ):
     """Enables or disables the auto-fill procedure."""
+
+    from lvmcryo.tools import run_command
 
     CRONJOB_PATH = "/home/sdss5/config/kube/cronjobs/ln2fill_2_fills.yml"
 
