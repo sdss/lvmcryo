@@ -11,6 +11,8 @@ defaults:
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
   max_temperature_increase: 1
 
+lockfile: /data/lvmcryo.lock
+
 profiles:
   production:
     use_thermistors: true

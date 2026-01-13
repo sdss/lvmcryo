@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import os
@@ -18,7 +19,7 @@ import subprocess
 import sys
 import time
 from contextlib import suppress
-from functools import partial
+from functools import partial, wraps
 from logging import FileHandler, getLogger
 
 from typing import TYPE_CHECKING, Any, Callable, Coroutine, Sequence
@@ -32,6 +33,8 @@ from lvmopstools.clu import CluClient
 from lvmopstools.retrier import Retrier
 from sdsstools.logger import CustomJsonFormatter
 from sdsstools.utils import run_in_executor
+
+from lvmcryo.config import ParameterOrigin
 
 
 if TYPE_CHECKING:
@@ -538,3 +541,40 @@ def run_command(
         raise RuntimeError(error_msg)
 
     return result
+
+
+def register_parameter_origin(func):
+    """A decorator that registers the origin of parameters passed to a function.
+
+    The decorated function must accept an additional keyword argument
+    ``__parameter_origin`` that will be set to a mapping of parameter names to
+    their :obj:`ParameterOrigin` value.
+
+    """
+
+    @wraps(func)
+    def inner(*args, **kwargs):
+        # If a __parameter_origin has already been passed, use it.
+        __parameter_origin = kwargs.pop("__parameter_origin", None)
+        if __parameter_origin is not None and __parameter_origin != {}:
+            return func(*args, __parameter_origin=__parameter_origin, **kwargs)
+
+        # Determine the origin of each parameter.
+        args = inspect.getfullargspec(func).args
+        origin: dict[str, ParameterOrigin] = {}
+
+        for arg in args:
+            if arg == "__parameter_origin":
+                continue
+            elif arg in kwargs:
+                origin[arg] = ParameterOrigin.FUNCTION_CALL
+            else:
+                origin[arg] = ParameterOrigin.DEFAULT
+
+        return func(
+            *args,
+            __parameter_origin=origin,
+            **kwargs,
+        )
+
+    return inner

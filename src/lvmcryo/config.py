@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import datetime
+import enum
 import os
 import pathlib
 import warnings
@@ -17,7 +18,6 @@ from functools import lru_cache
 
 from typing import Annotated, Any, Self
 
-from click.core import ParameterSource
 from pydantic import (
     BaseModel,
     Field,
@@ -34,8 +34,6 @@ class Actions(str, Enum):
     purge_fill = "purge-and-fill"
     purge = "purge"
     fill = "fill"
-    abort = "abort"
-    clear_lock = "clear-lock"
 
 
 class InteractiveMode(str, Enum):
@@ -47,6 +45,15 @@ class InteractiveMode(str, Enum):
 class NotificationLevel(str, Enum):
     info = "info"
     error = "error"
+
+
+class ParameterOrigin(Enum):
+    """Enumeration to track how a parameter was set."""
+
+    DEFAULT = enum.auto()
+    ENVVAR = enum.auto()
+    COMMAND_LINE = enum.auto()
+    FUNCTION_CALL = enum.auto()
 
 
 class ThermistorConfig(BaseModel):
@@ -165,7 +172,7 @@ class Config(BaseModel):
     error: Annotated[bool, ExcludedField] = False
 
     profile: str | None = None
-    param_source: Annotated[dict[str, ParameterSource | None], ExcludedField] = {}
+    param_origin: Annotated[dict[str, ParameterOrigin | None], ExcludedField] = {}
 
     def model_post_init(self, __context: Any) -> None:
         self._internal_config = get_internal_config(self.config_file)
@@ -219,13 +226,16 @@ class Config(BaseModel):
         # has not explicitly passed the parameter as a flag.
         if (profile := data["profile"]) is not None:
             profile_data = config.get("profiles", {}).get(profile, {})
-            param_source = data.get("param_source", {})
+            param_origin = data.get("param_origin", {})
             for key in profile_data:
                 if key not in data:
                     warnings.warn(f"Unknwon parameter in profile: {key}", UserWarning)
                     continue
-                psource = param_source.get(key, None)
-                if psource != ParameterSource.COMMANDLINE:
+
+                if param_origin.get(key, None) not in [
+                    ParameterOrigin.COMMAND_LINE,
+                    ParameterOrigin.FUNCTION_CALL,
+                ]:
                     data[key] = profile_data[key]
 
         # Use internal configuration files to fill in missing fields.
