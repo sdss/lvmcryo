@@ -4,6 +4,7 @@
 
 ### ✨ Improved
 
+* [#15](https://github.com/sdss/lvmcryo/pull/15) `lvmcryo.runner.ln2_runner` can now be called programmatically with the same functionality as the CLI. The CLI has been modified to use `ln2_runner` without changes in behaviour.
 * No need to run `pyenv shell --unset` in the manual fill script since it runs in its own shell.
 * Add wait time before starting manual fill to allow other fills to be aborted.
 
