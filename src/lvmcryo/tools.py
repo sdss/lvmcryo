@@ -284,6 +284,7 @@ async def ensure_lock(
                     lockfile,
                     exit=exit,
                     console=console,
+                    on_release_callback=on_release_callback,
                 )
             )
         yield
