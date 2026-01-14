@@ -606,6 +606,19 @@ async def clear_lock(
     return typer.Exit(0)
 
 
+@cli.command("abort")
+@cli_coro()
+async def abort():
+    """Aborts an ongoing purge/fill and closes all the valves.
+
+    Equivalent of calling close-valves and clear-lock.
+
+    """
+
+    await close_valves()
+    await clear_lock(wait=True)
+
+
 @cli.command("close-valves")
 @cli_coro()
 async def close_valves():
