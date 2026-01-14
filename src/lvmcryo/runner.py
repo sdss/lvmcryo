@@ -34,7 +34,6 @@ from lvmcryo.config import (
     InteractiveMode,
     NotificationLevel,
     ParameterOrigin,
-    get_internal_config,
 )
 from lvmcryo.handlers import LN2Handler, close_all_valves
 from lvmcryo.handlers.ln2 import get_now
@@ -44,6 +43,7 @@ from lvmcryo.tools import (
     LockExistsError,
     add_json_handler,
     ensure_lock,
+    get_lockfile_path,
     register_parameter_origin,
 )
 from lvmcryo.validate import validate_fill
@@ -74,6 +74,9 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     handler.event_times.end_time = get_now()
 
     log.error("Exiting now. No data or notifications will be sent.")
+
+    # Clear the lock.
+    get_lockfile_path().unlink(missing_ok=True)
 
     # Prevent the event loop from throwing some exception when we exit.
     asyncio.get_running_loop().stop()
@@ -358,7 +361,7 @@ async def ln2_runner(
             propagate=config.with_traceback,
         ) from err
 
-    lockfile_path = pathlib.Path(internal_config.get("lockfile", "/data/lvmcryo.lock"))
+    lockfile_path = get_lockfile_path()
 
     if lockfile_path.exists() and config.clear_lock:
         log.warning("Lock file exists. Removing it because --clear-lock.")
@@ -369,7 +372,7 @@ async def ln2_runner(
 
     try:
         db_handler = DBHandler(action, handler, config, json_handler=json_handler)
-        record_pk = await db_handler.write(complete=False)
+        record_pk = await db_handler.update(complete=False)
         if record_pk:
             log.debug(f"Record {record_pk} created in the database.")
     except Exception as err:
@@ -462,11 +465,11 @@ async def ln2_runner(
         except Exception as err:
             log.error(f"Error closing valves before exiting: {err}")
 
-        if not skip_finally:
-            # Do a quick update of the DB record since post_fill_tasks() may
-            # block for a long time.
-            await db_handler.write(error=error)
+        # Do a quick update of the DB record since post_fill_tasks() may
+        # block for a long time.
+        await db_handler.update(complete=True, error=error)
 
+        if not skip_finally:
             plot_paths = await post_fill_tasks(
                 handler,
                 notifier=notifier,
@@ -498,7 +501,7 @@ async def ln2_runner(
                     log.info("Fill validation completed successfully.")
 
             log.info("Writing fill metadata to database.")
-            await db_handler.write(complete=True, plot_paths=plot_paths, error=error)
+            await db_handler.update(complete=True, plot_paths=plot_paths, error=error)
 
             if config.notify:
                 images = {
@@ -533,8 +536,7 @@ async def ln2_runner(
                         record_pk=record_pk,
                     )
 
-            if error:
-                raise error
+        await db_handler.update()
 
 
 async def fill_runner(
@@ -621,7 +623,7 @@ async def fill_runner(
                 min_purge_time=config.min_purge_time,
                 max_purge_time=max_purge_time,
                 prompt=not config.no_prompt,
-                preopen_cb=db_handler.write if db_handler is not None else None,
+                preopen_cb=db_handler.update if db_handler is not None else None,
             ),
             timeout=max_purge_time + 60 if max_purge_time else None,
         )
@@ -640,7 +642,7 @@ async def fill_runner(
                 min_fill_time=config.min_fill_time,
                 max_fill_time=max_fill_time,
                 prompt=not config.no_prompt,
-                preopen_cb=db_handler.write if db_handler is not None else None,
+                preopen_cb=db_handler.update if db_handler is not None else None,
             ),
             timeout=max_fill_time + 60 if max_fill_time else None,
         )
@@ -1004,8 +1006,7 @@ async def clear_lock(
 
     """
 
-    internal_config = get_internal_config()
-    lockfile_path = pathlib.Path(internal_config.get("lockfile", "/data/lvmcryo.lock"))
+    lockfile_path = get_lockfile_path(lockfile_path)
 
     if lockfile_path.exists():
         if log:

@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Then, add the rest of the project source code and install it
 ADD . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --group server
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
