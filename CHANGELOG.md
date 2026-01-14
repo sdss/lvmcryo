@@ -2,6 +2,10 @@
 
 ## Next release
 
+### 🚀 New
+
+* [#16](https://github.com/sdss/lvmcryo/pull/16) Add a REST API to trigger LN2 fills remotely.
+
 ### ✨ Improved
 
 * [#15](https://github.com/sdss/lvmcryo/pull/15) `lvmcryo.runner.ln2_runner` can now be called programmatically with the same functionality as the CLI. The CLI has been modified to use `ln2_runner` without changes in behaviour.
