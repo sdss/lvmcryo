@@ -378,6 +378,7 @@ async def ln2_runner(
         async with ensure_lock(
             lockfile_path,
             monitor=True,
+            log=log,
             on_release_callback=handler.abort(raise_error=False, close_valves=True),
         ):
             # Calculate the expected maximum run time.

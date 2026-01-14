@@ -16,7 +16,6 @@ import logging
 import os
 import pathlib
 import subprocess
-import sys
 import time
 from contextlib import suppress
 from functools import partial, wraps
@@ -39,6 +38,8 @@ from lvmcryo.config import ParameterOrigin
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+    from sdsstools.logger import SDSSLogger
 
     from lvmcryo.config import Config
     from lvmcryo.handlers.ln2 import LN2Handler
@@ -223,13 +224,11 @@ class LockExistsError(RuntimeError):
 
 async def _monitor_lockfile(
     lockfile: pathlib.Path,
-    exit: bool = False,
+    log: SDSSLogger | None = None,
     console: Console | None = None,
     on_release_callback: Callable[..., Any] | Coroutine | None = None,
 ):
     """Monitors a lock file and raises an error if it is deleted."""
-
-    console = console or Console()
 
     while True:
         if not lockfile.exists():
@@ -241,11 +240,14 @@ async def _monitor_lockfile(
                 else:
                     on_release_callback()
 
-            if exit:
-                console.print(f"[red]Lock file {lockfile} has been released.[/]")
-                sys.exit(1)
+            message = f"Lock file {lockfile} has been released. Fills will be aborted."
 
-            raise RuntimeError(f"Lock file {lockfile} has been released.")
+            if console:
+                console.print(f"[yellow]{message}[/]")
+            if log:
+                log.warning(f"{message}")
+
+            raise RuntimeError(f"{message}")
 
         await asyncio.sleep(1)
 
@@ -254,22 +256,20 @@ async def _monitor_lockfile(
 async def ensure_lock(
     lockfile: str | os.PathLike | pathlib.Path,
     monitor: bool = False,
-    exit: bool = False,
     on_release_callback: Callable[..., Any] | Coroutine | None = None,
+    log: SDSSLogger | None = None,
     console: Console | None = None,
 ):
     """Ensures a lock file is created and deleted on exit.
 
     Raises an exception if the lock file already exists. If ``monitor=True``,
     monitors the lock file and raises an error if it is deleted while the context
-    is active. If ``exit=False`` the task raises an exception instead of exiting.
-    ``exit=True`` can be useful in cases in which the exception raised by the task
-    cannot be collected. Specify a ``on_release_callback`` to call a function or
-    coroutine when the lock file is released externally.
+    is active. Specify a ``on_release_callback`` to call a function or
+    coroutine when the lock file is released externally. ``log`` and ``console``
+    can be passed to log messages to the logger and stdout respectively.
 
     """
 
-    console = console or Console()
     lockfile = pathlib.Path(lockfile)
 
     if lockfile.exists():
@@ -284,8 +284,8 @@ async def ensure_lock(
             monitor_task = asyncio.create_task(
                 _monitor_lockfile(
                     lockfile,
-                    exit=exit,
                     console=console,
+                    log=log,
                     on_release_callback=on_release_callback,
                 )
             )
