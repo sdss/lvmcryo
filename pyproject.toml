@@ -34,6 +34,15 @@ dev = [
     "pytest-cov>=5.0.0",
     "pytest-mock>=3.14.0",
     "pytest-asyncio>=0.24.0",
+    "ty>=0.0.11",
+]
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.40.0",
+]
+server = [
+    "fastapi[standard]>=0.128.0",
 ]
 
 [project.urls]
@@ -45,6 +54,13 @@ lvmcryo = "lvmcryo.__main__:cli"
 
 [tool.uv]
 package = true
+
+[tool.poe.tasks.server]
+shell = "fastapi dev --host 0.0.0.0 --port $port --reload src/lvmcryo/server/app.py"
+env.LVMCRYO_FILL_PASSWORD = "MTIzNDU="  # "12345"
+args = [
+  { name = "port", default = "7777" }
+]
 
 [tool.ruff]
 line-length = 88
@@ -89,8 +105,3 @@ exclude_lines = [
 [build-system]
 requires = ["uv_build>=0.7.19,<0.8.0"]
 build-backend = "uv_build"
-
-[dependency-groups]
-dev = [
-    "ty>=0.0.6",
-]

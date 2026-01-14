@@ -33,7 +33,7 @@ from lvmopstools.retrier import Retrier
 from sdsstools.logger import CustomJsonFormatter
 from sdsstools.utils import run_in_executor
 
-from lvmcryo.config import ParameterOrigin
+from lvmcryo.config import ParameterOrigin, get_internal_config
 
 
 if TYPE_CHECKING:
@@ -563,10 +563,10 @@ def register_parameter_origin(func):
             return func(*args, __parameter_origin=__parameter_origin, **kwargs)
 
         # Determine the origin of each parameter.
-        args = inspect.getfullargspec(func).args
+        names = inspect.getfullargspec(func).args
         origin: dict[str, ParameterOrigin] = {}
 
-        for arg in args:
+        for arg in names:
             if arg == "__parameter_origin":
                 continue
             elif arg in kwargs:
@@ -581,3 +581,11 @@ def register_parameter_origin(func):
         )
 
     return inner
+
+
+def lockfile_exists(lockfile: str | os.PathLike | pathlib.Path | None = None) -> bool:
+    """Checks if the lock file exists."""
+
+    lockfile = lockfile or get_internal_config().get("lockfile", "/data/lvmcryo.lock")
+
+    return pathlib.Path(lockfile).exists()
