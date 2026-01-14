@@ -103,7 +103,6 @@ async def manual_fill(
         ln2_runner(
             profile="manual-fill",
             clear_lock=clear_lock,
-            dry_run=True,
             quiet=True,
         )
     )
