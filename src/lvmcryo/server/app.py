@@ -16,7 +16,8 @@ from contextlib import asynccontextmanager
 
 from typing import Annotated, AsyncIterator
 
-from fastapi import FastAPI, Query
+from fastapi import Body, FastAPI, Query
+from pydantic import BaseModel, Field
 
 from lvmcryo.config import get_internal_config
 from lvmcryo.handlers.valve import close_all_valves
@@ -48,13 +49,16 @@ async def filling():
     return {"filling": lockfile_exists()}
 
 
-@app.get("/manual-fill", summary="Starts a manual LN2 fill operation.")
-async def manual_fill(
+class ManualFillRequestBody(BaseModel):
     password: Annotated[
-        str | None,
-        Query(
-            description="The password to authorize manual LN2 fills.",
-        ),
+        str | None, Field(description="Password to authorize the LN2 fill.")
+    ] = None
+
+
+@app.post("/manual-fill", summary="Starts a manual LN2 fill operation.")
+async def manual_fill(
+    data: Annotated[
+        ManualFillRequestBody | None, Body(description="Body of the request")
     ] = None,
     clear_lock: Annotated[
         bool,
@@ -68,6 +72,8 @@ async def manual_fill(
     The route returns immediately after starting the operation in the background.
 
     """
+
+    password = data.password if data is not None else None
 
     config = get_internal_config()
     require_password = config["server.require_password"]
