@@ -70,19 +70,19 @@ async def manual_fill(
     """
 
     config = get_internal_config()
-    require_password = config['server.require_password']
+    require_password = config["server.require_password"]
 
     if require_password is True or require_password is None:
         password_b64 = os.environ.get("LVMCRYO_FILL_PASSWORD", None)
 
         if password_b64 is None:
-            return {"result": False, "reason": "Fill password not available."}
+            return {"result": False, "error": "Fill password not available."}
 
         password_bytes = password_b64.encode("utf-8")
         password_pt = base64.b64decode(password_bytes).decode("utf-8")
 
         if password != password_pt:
-            return {"result": False, "reason": "Invalid password."}
+            return {"result": False, "error": "Invalid password."}
 
     tasks: list[asyncio.Task] = []
 
@@ -90,7 +90,7 @@ async def manual_fill(
         if not clear_lock:
             return {
                 "result": False,
-                "reason": "Lock file exists. LN2 fill already in process.",
+                "error": "Lock file exists. LN2 fill already in process.",
             }
 
     tasks.append(
@@ -104,7 +104,7 @@ async def manual_fill(
 
     asyncio.gather(*tasks)
 
-    return {"result": True}
+    return {"result": True, "error": None}
 
 
 @app.get("/abort", summary="Abort LN2 fill operations and releases the lock.")
