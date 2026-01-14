@@ -34,6 +34,7 @@ from lvmcryo.config import (
     InteractiveMode,
     NotificationLevel,
     ParameterOrigin,
+    get_internal_config,
 )
 from lvmcryo.handlers import LN2Handler, close_all_valves
 from lvmcryo.handlers.ln2 import get_now
@@ -362,6 +363,9 @@ async def ln2_runner(
     if lockfile_path.exists() and config.clear_lock:
         log.warning("Lock file exists. Removing it because --clear-lock.")
         lockfile_path.unlink()
+
+        log.info("Waiting 10 seconds for other processes to stop.")
+        await asyncio.sleep(10)
 
     try:
         db_handler = DBHandler(action, handler, config, json_handler=json_handler)
@@ -976,3 +980,39 @@ def generate_plots(
         plt.close(fig)
 
     return paths
+
+
+async def clear_lock(
+    lockfile_path: str | pathlib.Path | None = None,
+    wait: bool = True,
+    wait_delay: float = 10,
+    log: SDSSLogger | None = None,
+):
+    """Clears the lock file if it exists.
+
+    Parameters
+    ----------
+    lockfile_path
+        The path to the lock file. If :obj:`None`, the internal configuration
+        value will be used.
+    wait
+        Whether to wait for other processes to stop after removing the lock file.
+    wait_delay
+        Time in seconds to wait after removing the lock file.
+    log
+        The logger instance to use. If not passed the operation is silent.
+
+    """
+
+    internal_config = get_internal_config()
+    lockfile_path = pathlib.Path(internal_config.get("lockfile", "/data/lvmcryo.lock"))
+
+    if lockfile_path.exists():
+        if log:
+            log.warning("Lock file exists. Removing it.")
+        lockfile_path.unlink()
+
+        if wait:
+            if log:
+                log.info(f"Waiting {wait_delay} seconds for other processes to stop.")
+                await asyncio.sleep(wait_delay)

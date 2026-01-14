@@ -562,7 +562,26 @@ def list_profiles(
 
 
 @cli.command("clear-lock")
-def clear_lock():
+@cli_coro()
+async def clear_lock(
+    wait: Annotated[
+        bool,
+        Option(
+            "--wait/--no-wait",
+            help="Waits a few seconds after removing the lock file to allow other "
+            "processes to stop.",
+            show_default=True,
+        ),
+    ] = True,
+    wait_delay: Annotated[
+        float,
+        Option(
+            "--wait-delay",
+            help="Time in seconds to wait after removing the lock file.",
+            show_default=True,
+        ),
+    ] = 10.0,
+):
     """Clears the lock file if it exists."""
 
     from lvmcryo.config import get_internal_config
@@ -573,6 +592,14 @@ def clear_lock():
     if lockfile_path.exists():
         lockfile_path.unlink()
         info_console.print("[green]Lock file removed.[/]")
+
+        if wait:
+            wait_delay = int(wait_delay)
+            info_console.print(
+                f"[gray]Waiting {wait_delay} seconds for other processes to stop.[/]"
+            )
+            await asyncio.sleep(wait_delay)
+
     else:
         info_console.print("[yellow]No lock file found.[/]")
 
