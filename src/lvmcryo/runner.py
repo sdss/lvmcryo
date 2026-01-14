@@ -372,7 +372,7 @@ async def ln2_runner(
 
     try:
         db_handler = DBHandler(action, handler, config, json_handler=json_handler)
-        record_pk = await db_handler.write(complete=False)
+        record_pk = await db_handler.update(complete=False)
         if record_pk:
             log.debug(f"Record {record_pk} created in the database.")
     except Exception as err:
@@ -467,7 +467,7 @@ async def ln2_runner(
 
         # Do a quick update of the DB record since post_fill_tasks() may
         # block for a long time.
-        await db_handler.write(complete=True, error=error)
+        await db_handler.update(complete=True, error=error)
 
         if not skip_finally:
             plot_paths = await post_fill_tasks(
@@ -501,7 +501,7 @@ async def ln2_runner(
                     log.info("Fill validation completed successfully.")
 
             log.info("Writing fill metadata to database.")
-            await db_handler.write(complete=True, plot_paths=plot_paths, error=error)
+            await db_handler.update(complete=True, plot_paths=plot_paths, error=error)
 
             if config.notify:
                 images = {
@@ -536,8 +536,7 @@ async def ln2_runner(
                         record_pk=record_pk,
                     )
 
-        if error:
-            raise error
+        await db_handler.update()
 
 
 async def fill_runner(

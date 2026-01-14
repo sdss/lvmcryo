@@ -390,6 +390,10 @@ class DBHandler:
 
         self.json_handler = json_handler
 
+        self.complete: bool = False
+        self.plot_paths: dict[str, pathlib.Path] = {}
+        self.error: Exception | str | None = None
+
     def get_log_data(self):
         """Returns the log data for the fill."""
 
@@ -401,10 +405,10 @@ class DBHandler:
 
         return None
 
-    async def write(
+    async def update(
         self,
-        complete: bool = False,
-        plot_paths: dict[str, pathlib.Path] = {},
+        complete: bool | None = None,
+        plot_paths: dict[str, pathlib.Path] | None = None,
         error: Exception | str | None = None,
         raise_on_error: bool = False,
     ):
@@ -440,9 +444,14 @@ class DBHandler:
             for valve, valve_model in self.config.valve_info.items()
         }
 
+        # Use cached values
+        self.complete = complete if complete is not None else self.complete
+        self.plot_paths = plot_paths if plot_paths is not None else self.plot_paths
+        self.error = error if error is not None else self.error
+
         payload = {
             "action": self.action,
-            "complete": complete,
+            "complete": self.complete,
             "pk": self.pk,
             "start_time": date_json(event_times.start_time),
             "end_time": date_json(event_times.end_time),
@@ -454,13 +463,13 @@ class DBHandler:
             "abort_time": date_json(event_times.abort_time),
             "failed": self.handler.failed,
             "aborted": self.handler.aborted,
-            "plot_paths": {k: str(v) for k, v in plot_paths.items()},
+            "plot_paths": {k: str(v) for k, v in self.plot_paths.items()},
             "log_file": str(log_path) if log_path else None,
             "valve_times": self.handler.get_valve_times(as_string=True),
             "json_file": json_file,
             "log_data": self.get_log_data(),
             "configuration": configuration_json,
-            "error": str(error) if error is not None else None,
+            "error": str(self.error) if self.error is not None else None,
         }
 
         async with httpx.AsyncClient(follow_redirects=True) as client:
