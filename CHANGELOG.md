@@ -5,8 +5,13 @@
 ### ✨ Improved
 
 * [#15](https://github.com/sdss/lvmcryo/pull/15) `lvmcryo.runner.ln2_runner` can now be called programmatically with the same functionality as the CLI. The CLI has been modified to use `ln2_runner` without changes in behaviour.
+* [#15](https://github.com/sdss/lvmcryo/pull/15) Added ``abort`` CLI command.
 * No need to run `pyenv shell --unset` in the manual fill script since it runs in its own shell.
 * Add wait time before starting manual fill to allow other fills to be aborted.
+
+### 🔧 Fixed
+
+* [#15](https://github.com/sdss/lvmcryo/pull/15) Various fixes to ensure that removing the lock file cancels all ongoing fills.
 
 
 ## 0.4.2 - 2026-01-09
