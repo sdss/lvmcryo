@@ -623,7 +623,7 @@ async def fill_runner(
                 min_purge_time=config.min_purge_time,
                 max_purge_time=max_purge_time,
                 prompt=not config.no_prompt,
-                preopen_cb=db_handler.write if db_handler is not None else None,
+                preopen_cb=db_handler.update if db_handler is not None else None,
             ),
             timeout=max_purge_time + 60 if max_purge_time else None,
         )
@@ -642,7 +642,7 @@ async def fill_runner(
                 min_fill_time=config.min_fill_time,
                 max_fill_time=max_fill_time,
                 prompt=not config.no_prompt,
-                preopen_cb=db_handler.write if db_handler is not None else None,
+                preopen_cb=db_handler.update if db_handler is not None else None,
             ),
             timeout=max_fill_time + 60 if max_fill_time else None,
         )
