@@ -234,7 +234,9 @@ async def _monitor_lockfile(
     while True:
         if not lockfile.exists():
             if on_release_callback:
-                if asyncio.iscoroutinefunction(on_release_callback):
+                if asyncio.iscoroutine(on_release_callback):
+                    await on_release_callback
+                elif asyncio.iscoroutinefunction(on_release_callback):
                     await on_release_callback()
                 else:
                     on_release_callback()
@@ -290,7 +292,7 @@ async def ensure_lock(
         yield
     finally:
         await cancel_task(monitor_task)
-        lockfile.unlink()
+        lockfile.unlink(missing_ok=True)
 
 
 def get_fake_logger():
