@@ -583,9 +583,17 @@ def register_parameter_origin(func):
     return inner
 
 
-def lockfile_exists(lockfile: str | os.PathLike | pathlib.Path | None = None) -> bool:
-    """Checks if the lock file exists."""
+def get_lockfile_path(
+    lockfile: str | os.PathLike | pathlib.Path | None = None,
+) -> pathlib.Path:
+    """Returns the path to the lock file."""
 
     lockfile = lockfile or get_internal_config().get("lockfile", "/data/lvmcryo.lock")
 
-    return pathlib.Path(lockfile).exists()
+    return pathlib.Path(lockfile)
+
+
+def lockfile_exists(lockfile: str | os.PathLike | pathlib.Path | None = None) -> bool:
+    """Checks if the lock file exists."""
+
+    return get_lockfile_path(lockfile).exists()
