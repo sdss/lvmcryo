@@ -15,26 +15,44 @@ import pathlib
 import signal
 import sys
 from datetime import timedelta
+from logging import FileHandler
+from tempfile import NamedTemporaryFile
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import httpx
 import polars
+from rich.prompt import Confirm
 
+from sdsstools.logger import get_logger
 from sdsstools.utils import run_in_executor
 
-from lvmcryo.config import Actions
+from lvmcryo import __version__
+from lvmcryo.config import (
+    Actions,
+    Config,
+    InteractiveMode,
+    NotificationLevel,
+    ParameterOrigin,
+    get_internal_config,
+)
 from lvmcryo.handlers import LN2Handler, close_all_valves
 from lvmcryo.handlers.ln2 import get_now
 from lvmcryo.notifier import Notifier
+from lvmcryo.tools import (
+    DBHandler,
+    LockExistsError,
+    add_json_handler,
+    ensure_lock,
+    register_parameter_origin,
+)
+from lvmcryo.validate import validate_fill
 
 
 if TYPE_CHECKING:
-    from lvmcryo.config import Config
-    from lvmcryo.tools import DBHandler
+    from sdsstools.logger import SDSSLogger
 
-
-__all__ = ["ln2_runner"]
+__all__ = ["fill_runner", "ln2_runner"]
 
 
 async def signal_handler(handler: LN2Handler, log: logging.Logger):
@@ -63,7 +81,463 @@ async def signal_handler(handler: LN2Handler, log: logging.Logger):
     sys.exit(1)
 
 
+class LN2RunnerError(Exception):
+    """An error occurred during the LN2 runner execution."""
+
+    def __init__(self, *args, propagate: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.propagate = propagate
+
+
+@register_parameter_origin
 async def ln2_runner(
+    action: Literal["purge", "fill", "purge-and-fill"] = "purge-and-fill",
+    cameras: list[str] | None = None,
+    profile: str | None = None,
+    config_file: pathlib.Path | None = None,
+    dry_run: bool = False,
+    interactive: Literal["auto", True, False, "yes", "no"] = False,
+    no_prompt: bool = True,
+    with_traceback: bool = False,
+    clear_lock: bool = False,
+    use_thermistors: bool = True,
+    require_all_thermistors: bool = False,
+    check_pressures: bool = True,
+    check_temperatures: bool = True,
+    check_o2_sensors: bool = True,
+    max_pressure: float | None = None,
+    max_temperature: float | None = None,
+    purge_time: float | None = None,
+    min_purge_time: float | None = None,
+    max_purge_time: float | None = None,
+    fill_time: float | None = None,
+    min_fill_time: float | None = None,
+    max_fill_time: float | None = None,
+    notify: bool = False,
+    slack: bool = True,
+    email: bool = True,
+    email_level: Literal["error", "info"] = "error",
+    quiet: bool = False,
+    verbose: bool = False,
+    write_log: bool = False,
+    log_path: pathlib.Path | None = None,
+    write_json: bool = True,
+    write_data: bool = False,
+    data_path: pathlib.Path | None = None,
+    data_extra_time: float = 60,
+    log: SDSSLogger | None = None,
+    __parameter_origin: dict[str, ParameterOrigin | None] = {},
+):
+    """Runs LN2 purge/fill/abort/clear actions.
+
+    This is a wrapper allowing the CLI functionality to be called programmatically.
+
+    Parameters
+    ----------
+    action
+        The action to perform. One of ``purge``, ``fill``, or ``purge-and-fill``.
+    cameras
+        The cameras to fill. Defaults to all cameras. Ignored for ``purge``, ``abort``
+        and ``clear_lock``.
+    profile
+        The profile to use.
+    config_file
+        The configuration file. Defaults to the internal configuration file.
+    dry_run
+        Test run the code but do not actually open/close any valves.
+    interactive
+        Controls whether the interactive features are shown.
+        When ``auto`` (the default), interactivity is determined based
+        on the console mode.
+    no_prompt
+        Does not prompt the user to finish or abort a purge/fill.
+        Prompting is required if ``fill_time`` or ``purge_time`` are not provided
+        and thermistors are not used.
+    with_traceback
+        Show the full traceback in case of an error. If not set, only the error message
+        is shown. The full traceback is always logged to the log file.
+    clear_lock
+        Clears the lock file if it exists before carrying out the action.
+    use_thermistors
+        Use thermistor values to determine purge/fill time.
+    require_all_thermistors
+        If set, waits until all thermistors have activated before closing any of the
+        valves. This prevents over-pressures in the cryostats when only some
+        of the valves are open. Ignored if ``use_thermistors=False``.
+    check_pressures
+        Aborts purge/fill if the pressure of any cryostat is above the limit.
+    check_temperatures
+        Aborts purge/fill if the temperature of a fill cryostat is above the limit.
+    check_o2_sensors
+        Aborts purge/fill if the oxygen sensor reads below the limit.
+    max_pressure
+        Maximum cryostat pressure if ``--check-pressure``. Defaults to internal value.
+    max_temperature
+        Maximum cryostat temperature if ``check_temperature=True``.
+        Defaults to internal value.
+    purge_time
+        Purge time in seconds. If ``use_thermistors=True``, this is used
+        as the maximum purge time.
+    min_purge_time
+        Minimum purge time in seconds. Defaults to internal value.
+    max_purge_time
+        Maximum purge time in seconds. Defaults to internal value.
+    fill_time
+        Fill time in seconds. If ``use_thermistors=True``, this is used as
+        the maximum fill time.
+    min_fill_time
+        Minimum fill time in seconds. Defaults to internal value.
+    max_fill_time
+        Maximum fill time in seconds. Defaults to internal value.
+    notify
+        Sends a notification when the action is completed. In not set,
+        ``slack`` and ``email`` are ignored. Notifications are not sent
+        for the ``abort`` and ``clear-lock`` actions.
+    slack
+        Send a Slack notification when the action is completed.
+    email
+        Send an email notification when the action is completed.
+    email_level
+        Send an email notification only on error or always.
+    quiet
+        Disable logging to stdout.
+    verbose
+        Outputs additional information to stdout.
+    write_log
+        Saves the log to a file.
+    log_path
+        Path where to save the log file. Implies ``write_log=True``.
+        Defaults to the current directory.
+    write_json
+        Saves the log in JSON format. Uses the same path as the file log. Ignored if
+        ``write_log`` is not passed.
+    write_data
+        Saves cryostat pressures and temperatures taken during purge/fill to a
+        parquet file.
+    data_path
+        Path where to save the data. Implies ``write_data=True``.
+        Defaults to a path relative to the log path.
+    data_extra_time
+        Additional time to take cryostat data after the action has been completed.
+        The command will not complete until data collection has finished.
+    log
+        The logger instance to use. If `None`, a new logger is created.
+    __parameter_origin
+        Used internally to track parameter origins. Do not pass this parameter
+        manually.
+
+    """
+
+    try:
+        action_enum = Actions(action)
+
+        if interactive is True:
+            interactive = "yes"
+        elif interactive is False:
+            interactive = "no"
+        interactive_enum = InteractiveMode(interactive)
+
+        email_level_enum = NotificationLevel(email_level)
+
+        config = Config(
+            action=action_enum,
+            cameras=cameras or [],
+            config_file=config_file,
+            dry_run=dry_run,
+            clear_lock=clear_lock,
+            with_traceback=with_traceback,
+            interactive=interactive_enum,
+            no_prompt=no_prompt,
+            notify=notify,
+            slack=slack,
+            email=email,
+            email_level=email_level_enum,
+            use_thermistors=use_thermistors,
+            require_all_thermistors=require_all_thermistors,
+            check_pressures=check_pressures,
+            check_temperatures=check_temperatures,
+            check_o2_sensors=check_o2_sensors,
+            max_pressure=max_pressure,
+            max_temperature=max_temperature,
+            purge_time=purge_time,
+            min_purge_time=min_purge_time,
+            max_purge_time=max_purge_time,
+            fill_time=fill_time,
+            min_fill_time=min_fill_time,
+            max_fill_time=max_fill_time,
+            quiet=quiet,
+            verbose=verbose,
+            write_log=write_log,
+            write_json=write_json,
+            log_path=log_path,
+            write_data=write_data,
+            data_path=data_path,
+            data_extra_time=data_extra_time,
+            version=__version__,
+            profile=profile,
+            param_origin=__parameter_origin,
+        )
+        internal_config = config.internal_config
+    except Exception as err:
+        raise LN2RunnerError(f"Error parsing configuration: {err!r}") from err
+
+    # Create log here and use its console for stdout.
+    if log is None:
+        log = get_logger("lvmcryo", use_rich_handler=True)
+        log.setLevel(5)
+
+    stdout_console = log.rich_console
+    assert stdout_console is not None
+
+    error: Exception | None = None
+    skip_finally: bool = False
+
+    json_path: pathlib.Path | None = None
+    json_handler: FileHandler | None = None
+    images: dict[str, pathlib.Path | None] = {}
+
+    if config.write_log and config.log_path:
+        log.start_file_logger(str(config.log_path))
+
+        if config.write_json:
+            json_path = config.log_path.with_suffix(".json")
+            json_handler = add_json_handler(log, json_path)
+
+    else:
+        # We're still creating log files, but to a temporary location. This is
+        # just to be able to send the log body in a notification email and include
+        # it when loading the DB.
+        temp_file = NamedTemporaryFile()
+        log.start_file_logger(temp_file.name)
+        json_path = pathlib.Path(temp_file.name).with_suffix(".json")
+        json_handler = add_json_handler(log, json_path)
+
+    if verbose:
+        log.sh.setLevel(5)
+    if quiet:
+        log.sh.setLevel(30)
+
+    # Always create a notifier. If the element is disabled the
+    # notifier won't do anything. This simplifies the code.
+    notifier = Notifier(internal_config)
+    notifier.disabled = not config.notify
+    notifier.slack_disabled = not config.slack
+    notifier.email_disabled = not config.email
+
+    if not config.notify:
+        log.debug("Notifications are disabled and will not be emitted.")
+
+    if config.config_file is not None:
+        log.info(f"Using configuration file: {config.config_file!s}")
+
+    if not config.no_prompt:
+        stdout_console.print(f"Action {config.action.value} will run with:")
+        stdout_console.print(config.model_dump())
+        if not Confirm.ask(
+            "Continue with this configuration?",
+            default=False,
+            show_default=True,
+            console=stdout_console,
+        ):
+            return False
+
+    # Create the LN2 handler.
+    try:
+        handler = LN2Handler(
+            config.cameras,
+            interactive=config.interactive == "yes",
+            log=log,
+            valve_info=config.valve_info,
+            dry_run=config.dry_run,
+            alerts_route=internal_config["api_routes"]["alerts"],
+            check_o2_sensors=config.check_o2_sensors,
+        )
+    except Exception as err:
+        raise LN2RunnerError(
+            f"Error creating LN2 handler: {err!r}",
+            propagate=config.with_traceback,
+        ) from err
+
+    lockfile_path = pathlib.Path(internal_config.get("lockfile", "/data/lvmcryo.lock"))
+
+    if lockfile_path.exists() and config.clear_lock:
+        log.warning("Lock file exists. Removing it because --clear-lock.")
+        lockfile_path.unlink()
+
+        log.info("Waiting 10 seconds for other processes to stop.")
+        await asyncio.sleep(10)
+
+    try:
+        db_handler = DBHandler(action, handler, config, json_handler=json_handler)
+        record_pk = await db_handler.write(complete=False)
+        if record_pk:
+            log.debug(f"Record {record_pk} created in the database.")
+    except Exception as err:
+        raise LN2RunnerError(
+            f"Error creating database record: {err!r}",
+            propagate=config.with_traceback,
+        ) from err
+
+    try:
+        async with ensure_lock(
+            lockfile_path,
+            monitor=True,
+            log=log,
+            on_release_callback=handler.abort(raise_error=False, close_valves=True),
+        ):
+            # Calculate the expected maximum run time.
+            max_time: float = 2 * 3600  # It should never take longer than two hours.
+            if config.max_purge_time is not None and config.max_fill_time is not None:
+                max_time = config.max_purge_time + config.max_fill_time + 300.0
+
+            # Run worker.
+            await asyncio.wait_for(
+                fill_runner(
+                    handler,
+                    config,
+                    notifier,
+                    db_handler=db_handler,
+                ),
+                timeout=max_time,
+            )
+
+            # Check handler status.
+            if handler.failed:
+                raise RuntimeError(
+                    "No exceptions were raised but the LN2 handler reports a failure."
+                )
+
+    except LockExistsError:
+        if config.notify:
+            log.warning("Sending failure notifications.")
+            await notifier.notify_after_fill(
+                False,
+                error_message=f"LN2 {config.action.value} failed because a lockfile "
+                "was already present.",
+            )
+
+        # Do not do anything special for this error, just exit.
+        skip_finally = True
+
+        raise
+
+    except Exception as err:
+        # Log the traceback to file but do not print.
+        orig_sh_level = log.sh.level
+        log.sh.setLevel(1000)
+
+        log.exception(f"Error during {config.action.value}: {err!s}", exc_info=err)
+        if isinstance(err, asyncio.TimeoutError):
+            log.error("One or more operations timed out.")
+
+        log.sh.setLevel(orig_sh_level)
+
+        # Fail the action.
+        handler.failed = True
+        skip_finally = True
+
+        error = err
+        raise LN2RunnerError(str(err), propagate=config.with_traceback) from err
+
+    else:
+        log.info(f"LN2 {config.action.value} completed successfully.")
+
+    finally:
+        # At this point all the valves are closed so we can remove the signal handlers.
+        for signame in ("SIGINT", "SIGTERM"):
+            asyncio.get_running_loop().remove_signal_handler(getattr(signal, signame))
+
+        handler.event_times.end_time = get_now()
+        await handler.clear()
+
+        log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
+
+        # Make sure all valves are closed.
+        try:
+            log.info("Ensuring all valves are closed.")
+            await asyncio.wait_for(
+                handler.stop(only_active=False, close_valves=True),
+                timeout=30,
+            )
+        except Exception as err:
+            log.error(f"Error closing valves before exiting: {err}")
+
+        if not skip_finally:
+            # Do a quick update of the DB record since post_fill_tasks() may
+            # block for a long time.
+            await db_handler.write(error=error)
+
+            plot_paths = await post_fill_tasks(
+                handler,
+                notifier=notifier,
+                write_data=config.write_data,
+                data_path=config.data_path,
+                data_extra_time=config.data_extra_time if error is None else None,
+                api_data_route=internal_config["api_routes"]["fill_data"],
+            )
+
+            if (
+                config.write_data
+                and config.data_path
+                and config.data_path.exists()
+                and not error
+            ):
+                validate_failed, validate_error = validate_fill(
+                    handler,
+                    config,
+                    log=log,
+                )
+                if validate_failed and error is None:
+                    await notifier.post_to_slack(
+                        "Fill validation failed. Check the log for details.",
+                        level=NotificationLevel.error,
+                    )
+                    handler.failed = True
+                    error = RuntimeError(validate_error)
+                elif not validate_failed:
+                    log.info("Fill validation completed successfully.")
+
+            log.info("Writing fill metadata to database.")
+            await db_handler.write(complete=True, plot_paths=plot_paths, error=error)
+
+            if config.notify:
+                images = {
+                    "pressure": plot_paths.get("pressure_png", None),
+                    "temps": plot_paths.get("temps_png", None),
+                    "thermistors": plot_paths.get("thermistors_png", None),
+                }
+
+                if error:
+                    log.warning("Sending failure notifications.")
+                    await notifier.notify_after_fill(
+                        False,
+                        error_message=error,
+                        handler=handler,
+                        images=images,
+                        record_pk=record_pk,
+                    )
+
+                elif config.email_level == NotificationLevel.info:
+                    # The handler has already emitted a notification to
+                    # Slack so just send an email.
+
+                    # TODO: include log and more data here.
+                    # For now it's just plain text.
+
+                    log.info("Sending notification email.")
+                    await notifier.notify_after_fill(
+                        True,
+                        handler=handler,
+                        images=images,
+                        post_to_slack=False,  # Already done.
+                        record_pk=record_pk,
+                    )
+
+            if error:
+                raise error
+
+
+async def fill_runner(
     handler: LN2Handler,
     config: Config,
     notifier: Notifier | None = None,
@@ -506,3 +980,39 @@ def generate_plots(
         plt.close(fig)
 
     return paths
+
+
+async def clear_lock(
+    lockfile_path: str | pathlib.Path | None = None,
+    wait: bool = True,
+    wait_delay: float = 10,
+    log: SDSSLogger | None = None,
+):
+    """Clears the lock file if it exists.
+
+    Parameters
+    ----------
+    lockfile_path
+        The path to the lock file. If :obj:`None`, the internal configuration
+        value will be used.
+    wait
+        Whether to wait for other processes to stop after removing the lock file.
+    wait_delay
+        Time in seconds to wait after removing the lock file.
+    log
+        The logger instance to use. If not passed the operation is silent.
+
+    """
+
+    internal_config = get_internal_config()
+    lockfile_path = pathlib.Path(internal_config.get("lockfile", "/data/lvmcryo.lock"))
+
+    if lockfile_path.exists():
+        if log:
+            log.warning("Lock file exists. Removing it.")
+        lockfile_path.unlink()
+
+        if wait:
+            if log:
+                log.info(f"Waiting {wait_delay} seconds for other processes to stop.")
+                await asyncio.sleep(wait_delay)

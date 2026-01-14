@@ -10,15 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import os
 import pathlib
 import subprocess
-import sys
 import time
 from contextlib import suppress
-from functools import partial
+from functools import partial, wraps
 from logging import FileHandler, getLogger
 
 from typing import TYPE_CHECKING, Any, Callable, Coroutine, Sequence
@@ -33,9 +33,13 @@ from lvmopstools.retrier import Retrier
 from sdsstools.logger import CustomJsonFormatter
 from sdsstools.utils import run_in_executor
 
+from lvmcryo.config import ParameterOrigin
+
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+    from sdsstools.logger import SDSSLogger
 
     from lvmcryo.config import Config
     from lvmcryo.handlers.ln2 import LN2Handler
@@ -220,27 +224,30 @@ class LockExistsError(RuntimeError):
 
 async def _monitor_lockfile(
     lockfile: pathlib.Path,
-    exit: bool = False,
+    log: SDSSLogger | None = None,
     console: Console | None = None,
     on_release_callback: Callable[..., Any] | Coroutine | None = None,
 ):
     """Monitors a lock file and raises an error if it is deleted."""
 
-    console = console or Console()
-
     while True:
         if not lockfile.exists():
             if on_release_callback:
-                if asyncio.iscoroutinefunction(on_release_callback):
+                if asyncio.iscoroutine(on_release_callback):
+                    await on_release_callback
+                elif asyncio.iscoroutinefunction(on_release_callback):
                     await on_release_callback()
                 else:
                     on_release_callback()
 
-            if exit:
-                console.print(f"[red]Lock file {lockfile} has been released.[/]")
-                sys.exit(1)
+            message = f"Lock file {lockfile} has been released. Fills will be aborted."
 
-            raise RuntimeError(f"Lock file {lockfile} has been released.")
+            if console:
+                console.print(f"[yellow]{message}[/]")
+            if log:
+                log.warning(f"{message}")
+
+            raise RuntimeError(f"{message}")
 
         await asyncio.sleep(1)
 
@@ -249,22 +256,20 @@ async def _monitor_lockfile(
 async def ensure_lock(
     lockfile: str | os.PathLike | pathlib.Path,
     monitor: bool = False,
-    exit: bool = False,
     on_release_callback: Callable[..., Any] | Coroutine | None = None,
+    log: SDSSLogger | None = None,
     console: Console | None = None,
 ):
     """Ensures a lock file is created and deleted on exit.
 
     Raises an exception if the lock file already exists. If ``monitor=True``,
     monitors the lock file and raises an error if it is deleted while the context
-    is active. If ``exit=False`` the task raises an exception instead of exiting.
-    ``exit=True`` can be useful in cases in which the exception raised by the task
-    cannot be collected. Specify a ``on_release_callback`` to call a function or
-    coroutine when the lock file is released externally.
+    is active. Specify a ``on_release_callback`` to call a function or
+    coroutine when the lock file is released externally. ``log`` and ``console``
+    can be passed to log messages to the logger and stdout respectively.
 
     """
 
-    console = console or Console()
     lockfile = pathlib.Path(lockfile)
 
     if lockfile.exists():
@@ -279,14 +284,15 @@ async def ensure_lock(
             monitor_task = asyncio.create_task(
                 _monitor_lockfile(
                     lockfile,
-                    exit=exit,
                     console=console,
+                    log=log,
+                    on_release_callback=on_release_callback,
                 )
             )
         yield
     finally:
         await cancel_task(monitor_task)
-        lockfile.unlink()
+        lockfile.unlink(missing_ok=True)
 
 
 def get_fake_logger():
@@ -538,3 +544,40 @@ def run_command(
         raise RuntimeError(error_msg)
 
     return result
+
+
+def register_parameter_origin(func):
+    """A decorator that registers the origin of parameters passed to a function.
+
+    The decorated function must accept an additional keyword argument
+    ``__parameter_origin`` that will be set to a mapping of parameter names to
+    their :obj:`ParameterOrigin` value.
+
+    """
+
+    @wraps(func)
+    def inner(*args, **kwargs):
+        # If a __parameter_origin has already been passed, use it.
+        __parameter_origin = kwargs.pop("__parameter_origin", None)
+        if __parameter_origin is not None and __parameter_origin != {}:
+            return func(*args, __parameter_origin=__parameter_origin, **kwargs)
+
+        # Determine the origin of each parameter.
+        args = inspect.getfullargspec(func).args
+        origin: dict[str, ParameterOrigin] = {}
+
+        for arg in args:
+            if arg == "__parameter_origin":
+                continue
+            elif arg in kwargs:
+                origin[arg] = ParameterOrigin.FUNCTION_CALL
+            else:
+                origin[arg] = ParameterOrigin.DEFAULT
+
+        return func(
+            *args,
+            __parameter_origin=origin,
+            **kwargs,
+        )
+
+    return inner

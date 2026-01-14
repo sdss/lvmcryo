@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import enum
+import os
 import pathlib
 import signal
 from functools import wraps
@@ -17,17 +18,19 @@ from functools import wraps
 from typing import Annotated, Optional, cast
 
 import typer
+from click.core import ParameterSource
 from rich.console import Console
 from typer import Argument, Option
 from typer.core import TyperGroup
 
-from lvmcryo.config import Actions, InteractiveMode, NotificationLevel
+from lvmcryo.config import Actions, InteractiveMode, NotificationLevel, ParameterOrigin
 
-
-LOCKFILE = pathlib.Path("/data/lvmcryo.lock")
 
 info_console = Console()
 err_console = Console(stderr=True)
+
+
+DEBUG = os.environ.get("LVMCRYO_DEBUG", "").lower() not in ["", "0", "false"]
 
 
 def cli_coro(
@@ -43,6 +46,10 @@ def cli_coro(
             if shutdown_func:
                 for ss in signals:
                     loop.add_signal_handler(ss, shutdown_func, ss, loop)
+
+            if loop.is_running():
+                return asyncio.create_task(f(*args, **kwargs))
+
             return loop.run_until_complete(f(*args, **kwargs))
 
         return wrapper
@@ -88,6 +95,7 @@ def main(
     ] = None,
 ):
     """CLI for LVM cryostats."""
+
     pass
 
 
@@ -426,52 +434,31 @@ async def ln2(
 
     """
 
-    from logging import FileHandler
-    from tempfile import NamedTemporaryFile
-
-    from rich.prompt import Confirm
-
     from sdsstools.logger import get_logger
 
-    from lvmcryo import __version__
-    from lvmcryo.config import Config
-    from lvmcryo.handlers.ln2 import LN2Handler, get_now
-    from lvmcryo.notifier import Notifier
-    from lvmcryo.runner import ln2_runner, post_fill_tasks
-    from lvmcryo.tools import (
-        DBHandler,
-        LockExistsError,
-        add_json_handler,
-        ensure_lock,
-    )
-    from lvmcryo.validate import validate_fill
+    from lvmcryo.runner import LN2RunnerError, ln2_runner
+    from lvmcryo.tools import LockExistsError
 
-    # Create log here and use its console for stdout.
     log = get_logger("lvmcryo", use_rich_handler=True)
     log.setLevel(5)
 
-    stdout_console = log.rich_console
-    assert stdout_console is not None
-
-    error: Exception | str | None = None
-    skip_finally: bool = False
-
-    json_path: pathlib.Path | None = None
-    json_handler: FileHandler | None = None
-    images: dict[str, pathlib.Path | None] = {}
-
-    if action == Actions.abort:
-        return await _close_valves_helper()
-    elif action == Actions.clear_lock:
-        if LOCKFILE.exists():
-            LOCKFILE.unlink()
-            stdout_console.print("[green]Lock file removed.[/]")
-        else:
-            stdout_console.print("[yellow]No lock file found.[/]")
-        return
-
     try:
-        config = Config(
+        # Determine parameter origins. The config uses this information to
+        # decide whether a profile parameter should be overridden or not.
+        param_origin: dict[str, ParameterOrigin | None] = {}
+        for param in ctx.params:
+            source = ctx.get_parameter_source(param)
+            match source:
+                case ParameterSource.COMMANDLINE:
+                    param_origin[param] = ParameterOrigin.COMMAND_LINE
+                case ParameterSource.DEFAULT:
+                    param_origin[param] = ParameterOrigin.DEFAULT
+                case ParameterSource.ENVIRONMENT:
+                    param_origin[param] = ParameterOrigin.ENVVAR
+                case _:
+                    param_origin[param] = None
+
+        await ln2_runner(
             action=action,
             cameras=cameras or [],
             config_file=config_file,
@@ -505,110 +492,10 @@ async def ln2(
             write_data=write_data,
             data_path=data_path,
             data_extra_time=data_extra_time,
-            version=__version__,
             profile=profile,
-            # We cannot pass the context directly so we pass a dict of the
-            # origin of each parameter to reject profile parameters that
-            # have been manually defined.
-            param_source={pp: ctx.get_parameter_source(pp) for pp in ctx.params},
+            log=log,
+            __parameter_origin=param_origin,
         )
-    except ValueError as err:
-        err_console.print(f"[red]Error parsing configuration:[/] {err}")
-        raise typer.Exit(1)
-
-    if config.write_log and config.log_path:
-        log.start_file_logger(str(config.log_path))
-
-        if config.write_json:
-            json_path = config.log_path.with_suffix(".json")
-            json_handler = add_json_handler(log, json_path)
-
-    else:
-        # We're still creating log files, but to a temporary location. This is
-        # just to be able to send the log body in a notification email and include
-        # it when loading the DB.
-        temp_file = NamedTemporaryFile()
-        log.start_file_logger(temp_file.name)
-        json_path = pathlib.Path(temp_file.name).with_suffix(".json")
-        json_handler = add_json_handler(log, json_path)
-
-    if verbose:
-        log.sh.setLevel(5)
-    if quiet:
-        log.sh.setLevel(30)
-
-    # Always create a notifier. If the element is disabled the
-    # notifier won't do anything. This simplifies the code.
-    notifier = Notifier(config.internal_config)
-    notifier.disabled = not config.notify
-    notifier.slack_disabled = not config.slack
-    notifier.email_disabled = not config.email
-
-    if not config.notify:
-        log.debug("Notifications are disabled and will not be emitted.")
-
-    if config.config_file is not None:
-        log.info(f"Using configuration file: {config.config_file!s}")
-
-    if not config.no_prompt:
-        stdout_console.print(f"Action {config.action.value} will run with:")
-        stdout_console.print(config.model_dump())
-        if not Confirm.ask(
-            "Continue with this configuration?",
-            default=False,
-            show_default=True,
-            console=stdout_console,
-        ):
-            return typer.Exit(0)
-
-    # Create the LN2 handler.
-    handler = LN2Handler(
-        config.cameras,
-        interactive=config.interactive == "yes",
-        log=log,
-        valve_info=config.valve_info,
-        dry_run=config.dry_run,
-        alerts_route=config.internal_config["api_routes"]["alerts"],
-        check_o2_sensors=config.check_o2_sensors,
-    )
-
-    if LOCKFILE.exists() and config.clear_lock:
-        log.warning("Lock file exists. Removing it because --clear-lock.")
-        LOCKFILE.unlink()
-
-    db_handler = DBHandler(action, handler, config, json_handler=json_handler)
-    record_pk = await db_handler.write(complete=False)
-    if record_pk:
-        log.debug(f"Record {record_pk} created in the database.")
-
-    try:
-        async with ensure_lock(
-            LOCKFILE,
-            monitor=True,
-            exit=True,
-            on_release_callback=handler.abort(raise_error=False, close_valves=True),
-        ):
-            # Calculate the expected maximum run time.
-            max_time: float = 2 * 3600  # It should never take longer than two hours.
-            if config.max_purge_time is not None and config.max_fill_time is not None:
-                max_time = config.max_purge_time + config.max_fill_time + 300.0
-
-            # Run worker.
-            await asyncio.wait_for(
-                ln2_runner(
-                    handler,
-                    config,
-                    notifier,
-                    db_handler=db_handler,
-                ),
-                timeout=max_time,
-            )
-
-            # Check handler status.
-            if handler.failed:
-                raise RuntimeError(
-                    "No exceptions were raised but the LN2 handler reports a failure."
-                )
 
     except LockExistsError:
         err_console.print(
@@ -616,141 +503,22 @@ async def ln2(
             "performing an operation. Use [green]lvmcryo ln2 clear-lock[/] to remove "
             "the lock."
         )
-
-        if config.notify:
-            log.warning("Sending failure notifications.")
-            await notifier.notify_after_fill(
-                False,
-                error_message=f"LN2 {action.value} failed because a lockfile "
-                "was already present.",
-            )
-
-        # Do not do anything special for this error, just exit.
-        skip_finally = True
-
         raise typer.Exit(1)
 
     except Exception as err:
-        # Log the traceback to file but do not print.
-        orig_sh_level = log.sh.level
-        log.sh.setLevel(1000)
+        # Hide the traceback unless with_traceback or DEBUG is set, but always log it
+        # to the file, if we are doing that.
+        log.sh.setLevel(10000)
 
-        log.exception(f"Error during {action.value}: {err!s}", exc_info=err)
-        if isinstance(err, asyncio.TimeoutError):
-            log.error("One or more operations timed out.")
+        log.exception("Error raised in LN2 runner.", exc_info=err)
+        err_console.print(f"[red]LN2 operation failed:[/] {err}")
 
-        log.sh.setLevel(orig_sh_level)
-
-        # Fail the action.
-        handler.failed = True
-        skip_finally = True
-
-        error = err
-        if config.with_traceback:
+        if (isinstance(err, LN2RunnerError) and err.propagate) or DEBUG:
             raise
 
         raise typer.Exit(1)
 
-    else:
-        log.info(f"LN2 {action.value} completed successfully.")
-
-    finally:
-        # At this point all the valves are closed so we can remove the signal handlers.
-        for signame in ("SIGINT", "SIGTERM"):
-            asyncio.get_running_loop().remove_signal_handler(getattr(signal, signame))
-
-        handler.event_times.end_time = get_now()
-        await handler.clear()
-
-        log.info(f"Event times:\n{handler.event_times.model_dump_json(indent=2)}")
-
-        # Make sure all valves are closed.
-        try:
-            log.info("Ensuring all valves are closed.")
-            await asyncio.wait_for(
-                handler.stop(only_active=False, close_valves=True),
-                timeout=30,
-            )
-        except Exception as err:
-            log.error(f"Error closing valves before exiting: {err}")
-
-        if not skip_finally:
-            # Do a quick update of the DB record since post_fill_tasks() may
-            # block for a long time.
-            await db_handler.write(error=error)
-
-            plot_paths = await post_fill_tasks(
-                handler,
-                notifier=notifier,
-                write_data=config.write_data,
-                data_path=config.data_path,
-                data_extra_time=config.data_extra_time if error is None else None,
-                api_data_route=config.internal_config["api_routes"]["fill_data"],
-            )
-
-            if (
-                config.write_data
-                and config.data_path
-                and config.data_path.exists()
-                and not error
-            ):
-                validate_failed, validate_error = validate_fill(
-                    handler,
-                    config,
-                    log=log,
-                )
-                if validate_failed and error is None:
-                    await notifier.post_to_slack(
-                        "Fill validation failed. Check the log for details.",
-                        level=NotificationLevel.error,
-                    )
-                    handler.failed = True
-                    error = validate_error
-                elif not validate_failed:
-                    log.info("Fill validation completed successfully.")
-
-            log.info("Writing fill metadata to database.")
-            await db_handler.write(complete=True, plot_paths=plot_paths, error=error)
-
-            if config.notify:
-                images = {
-                    "pressure": plot_paths.get("pressure_png", None),
-                    "temps": plot_paths.get("temps_png", None),
-                    "thermistors": plot_paths.get("thermistors_png", None),
-                }
-
-                if error:
-                    log.warning("Sending failure notifications.")
-                    await notifier.notify_after_fill(
-                        False,
-                        error_message=error,
-                        handler=handler,
-                        images=images,
-                        record_pk=record_pk,
-                    )
-
-                elif config.email_level == NotificationLevel.info:
-                    # The handler has already emitted a notification to
-                    # Slack so just send an email.
-
-                    # TODO: include log and more data here.
-                    # For now it's just plain text.
-
-                    log.info("Sending notification email.")
-                    await notifier.notify_after_fill(
-                        True,
-                        handler=handler,
-                        images=images,
-                        post_to_slack=False,  # Already done.
-                        record_pk=record_pk,
-                    )
-
-            if error:
-                # Last message before existing.
-                err_console.print(f"[red]Error found during {action.value}:[/] {error}")
-
-    if error:
-        raise typer.Exit(1)
+    return typer.Exit(0)
 
 
 async def _close_valves_helper():
@@ -794,16 +562,61 @@ def list_profiles(
 
 
 @cli.command("clear-lock")
-def clear_lock():
+@cli_coro()
+async def clear_lock(
+    wait: Annotated[
+        bool,
+        Option(
+            "--wait/--no-wait",
+            help="Waits a few seconds after removing the lock file to allow other "
+            "processes to stop.",
+            show_default=True,
+        ),
+    ] = True,
+    wait_delay: Annotated[
+        float,
+        Option(
+            "--wait-delay",
+            help="Time in seconds to wait after removing the lock file.",
+            show_default=True,
+        ),
+    ] = 10.0,
+):
     """Clears the lock file if it exists."""
 
-    if LOCKFILE.exists():
-        LOCKFILE.unlink()
+    from lvmcryo.config import get_internal_config
+
+    config = get_internal_config()
+    lockfile_path = pathlib.Path(config.get("lockfile", "/data/lvmcryo.lock"))
+
+    if lockfile_path.exists():
+        lockfile_path.unlink()
         info_console.print("[green]Lock file removed.[/]")
+
+        if wait:
+            wait_delay = int(wait_delay)
+            info_console.print(
+                f"[gray]Waiting {wait_delay} seconds for other processes to stop.[/]"
+            )
+            await asyncio.sleep(wait_delay)
+
     else:
         info_console.print("[yellow]No lock file found.[/]")
 
     return typer.Exit(0)
+
+
+@cli.command("abort")
+@cli_coro()
+async def abort():
+    """Aborts an ongoing purge/fill and closes all the valves.
+
+    Equivalent of calling close-valves and clear-lock.
+
+    """
+
+    await close_valves()
+    await clear_lock(wait=True)
 
 
 @cli.command("close-valves")

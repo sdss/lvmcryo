@@ -11,16 +11,42 @@ defaults:
   data_path: '/data/logs/lvmcryo/{timestamp}.parquet'
   max_temperature_increase: 1
 
+lockfile: /data/lvmcryo.lock
+
 profiles:
   production:
+    use_thermistors: true
     clear_lock: true
     interactive: 'no'
     notify: true
-    with_traceback: true
     write_log: true
     write_data: true
     write_json: true
     email_level: info
+    with_traceback: true
+    data_extra_time: 1200
+  manual-fill:
+    use_thermistors: true
+    clear_lock: false
+    interactive: 'no'
+    notify: false
+    write_log: true
+    write_data: false
+    write_json: true
+    email_level: info
+    with_traceback: true
+  timed-fill:
+    use_thermistors: false
+    max_purge_time: 2100
+    max_fill_time: 360
+    clear_lock: false
+    interactive: 'no'
+    notify: true
+    write_log: true
+    write_data: true
+    write_json: true
+    email_level: info
+    with_traceback: true
     data_extra_time: 1200
 
 notifications:
