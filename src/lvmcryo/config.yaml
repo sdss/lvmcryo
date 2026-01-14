@@ -97,3 +97,6 @@ valve_info:
     outlet: purge
     thermistor:
       channel: supply
+
+server:
+  require_password: true

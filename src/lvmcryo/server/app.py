@@ -18,6 +18,7 @@ from typing import Annotated, AsyncIterator
 
 from fastapi import FastAPI, Query
 
+from lvmcryo.config import get_internal_config
 from lvmcryo.handlers.valve import close_all_valves
 from lvmcryo.runner import clear_lock as clear_lock_helper
 from lvmcryo.runner import ln2_runner
@@ -50,11 +51,11 @@ async def filling():
 @app.get("/manual-fill", summary="Starts a manual LN2 fill operation.")
 async def manual_fill(
     password: Annotated[
-        str,
+        str | None,
         Query(
             description="The password to authorize manual LN2 fills.",
         ),
-    ],
+    ] = None,
     clear_lock: Annotated[
         bool,
         Query(
@@ -68,16 +69,20 @@ async def manual_fill(
 
     """
 
-    password_b64 = os.environ.get("LVMCRYO_FILL_PASSWORD", None)
+    config = get_internal_config()
+    require_password = config['server.require_password']
 
-    if password_b64 is None:
-        return {"result": False, "reason": "Fill password not available."}
+    if require_password is True or require_password is None:
+        password_b64 = os.environ.get("LVMCRYO_FILL_PASSWORD", None)
 
-    password_bytes = password_b64.encode("utf-8")
-    password_pt = base64.b64decode(password_bytes).decode("utf-8")
+        if password_b64 is None:
+            return {"result": False, "reason": "Fill password not available."}
 
-    if password != password_pt:
-        return {"result": False, "reason": "Invalid password."}
+        password_bytes = password_b64.encode("utf-8")
+        password_pt = base64.b64decode(password_bytes).decode("utf-8")
+
+        if password != password_pt:
+            return {"result": False, "reason": "Invalid password."}
 
     tasks: list[asyncio.Task] = []
 
