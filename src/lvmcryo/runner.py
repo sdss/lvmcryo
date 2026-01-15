@@ -35,6 +35,7 @@ from lvmcryo.config import (
     InteractiveMode,
     NotificationLevel,
     ParameterOrigin,
+    get_internal_config,
 )
 from lvmcryo.handlers import LN2Handler, close_all_valves
 from lvmcryo.handlers.ln2 import get_now
@@ -258,6 +259,9 @@ async def ln2_runner(
             config_file_env = os.environ.get("LVMCRYO_CONFIG_FILE", None)
             if config_file_env is not None:
                 config_file = pathlib.Path(config_file_env)
+
+        # Clear the cache for get_internal_config() to ensure fresh load.
+        get_internal_config.cache_clear()
 
         config = Config(
             action=action_enum,
