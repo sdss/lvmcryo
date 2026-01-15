@@ -16,6 +16,7 @@
 ### 🔧 Fixed
 
 * [#15](https://github.com/sdss/lvmcryo/pull/15) Various fixes to ensure that removing the lock file cancels all ongoing fills.
+* Prevent multiple calls to `ValveHandler.finish()` overriding the valve close time.
 
 
 ## 0.4.2 - 2026-01-09

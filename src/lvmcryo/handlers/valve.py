@@ -373,7 +373,8 @@ class ValveHandler:
             else:
                 self.log.info(f"Valve {self.valve!r} was open.")
 
-            self.open_time = datetime.now(UTC)
+            if not self.open_time:
+                self.open_time = datetime.now(UTC)
 
         else:
             if did_timeout:
@@ -382,4 +383,5 @@ class ValveHandler:
             else:
                 self.log.info(f"Valve {self.valve!r} was closed.")
 
-            self.close_time = datetime.now(UTC)
+            if not self.close_time:
+                self.close_time = datetime.now(UTC)
