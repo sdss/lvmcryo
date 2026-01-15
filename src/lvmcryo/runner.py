@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import os
 import pathlib
 import signal
 import sys
@@ -241,6 +242,22 @@ async def ln2_runner(
         interactive_enum = InteractiveMode(interactive)
 
         email_level_enum = NotificationLevel(email_level)
+
+        # Load configuration from environment variables if not provided. For now
+        # only profile and config_file.
+        if (
+            "profile" not in __parameter_origin
+            or __parameter_origin["profile"] == ParameterOrigin.DEFAULT
+        ):
+            profile = os.environ.get("LVMCRYO_PROFILE", None)
+
+        if (
+            "config_file" not in __parameter_origin
+            or __parameter_origin["config_file"] == ParameterOrigin.DEFAULT
+        ):
+            config_file_env = os.environ.get("LVMCRYO_CONFIG_FILE", None)
+            if config_file_env is not None:
+                config_file = pathlib.Path(config_file_env)
 
         config = Config(
             action=action_enum,
