@@ -205,8 +205,9 @@ async def ln2(
             "--require-all-thermistors",
             envvar="LVMCRYO_REQUIRE_ALL_THERMISTORS",
             help="If set, waits until all thermistors have activated before closing "
-            "any of the valves. This prevents overpressures in the cryostats when only "
-            "some of the valves are open. Ignore if --no-use-thermistors is used. ",
+            "any of the valves. This prevents over pressures in the cryostats when "
+            "only some of the valves are open. Ignored if --no-use-thermistors "
+            "is used.",
             rich_help_panel="Purge and fill options",
         ),
     ] = False,
