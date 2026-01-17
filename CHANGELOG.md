@@ -6,6 +6,11 @@
 
 * Use coroutine function in `ensure_future.on_release_callback`.
 
+### 🔧 Fixed
+
+* Serialise `config_file` path in the `Config` model, which was causing DB load to fail.
+* Ensure that `interactive` is properly handled.
+
 
 ## 0.5.0 - 2026-01-17
 
