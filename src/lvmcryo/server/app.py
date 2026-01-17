@@ -66,6 +66,10 @@ async def manual_fill(
             description="If true, clears any existing lock before starting the fill."
         ),
     ] = False,
+    dry_run: Annotated[
+        bool,
+        Query(description="If true, performs a dry run without actuating valves."),
+    ] = False,
 ):
     """Starts a manual LN2 purge and fill operation.
 
@@ -104,6 +108,7 @@ async def manual_fill(
             profile="manual-fill",
             clear_lock=clear_lock,
             quiet=True,
+            dry_run=dry_run,
         )
     )
 

@@ -5,6 +5,7 @@
 ### ✨ Improved
 
 * Use coroutine function in `ensure_future.on_release_callback`.
+* Allow running the LN2 fill in dry-run mode via the API.
 
 ### 🔧 Fixed
 
