@@ -283,7 +283,7 @@ class Config(BaseModel):
         description="The version of the lvmcryo package.",
     )
 
-    valve_info: dict[str, ValveConfig] = {}
+    valve_info: Annotated[dict[str, ValveConfig], ExcludedField] = {}
 
     _internal_config: Annotated[Configuration, PrivateAttr] = Configuration({})
 
