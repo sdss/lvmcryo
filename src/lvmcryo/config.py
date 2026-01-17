@@ -121,58 +121,170 @@ class Config(BaseModel):
 
     """
 
-    action: Actions = Actions.purge_fill
-    cameras: list[str] = []  # Empty list means all cameras.
+    # Configuration options
+    profile: str | None = Field(
+        default=None,
+        description="The configuration profile to use.",
+    )
+    config_file: pathlib.Path | None = Field(
+        default=None,
+        description="The configuration file to use.",
+    )
 
-    interactive: InteractiveMode = InteractiveMode.auto
-    no_prompt: bool = False
-    dry_run: bool = False
-    clear_lock: bool = False
-    with_traceback: bool = False
+    # Actions
+    action: Actions = Field(
+        default=Actions.purge_fill,
+        description="The action to perform.",
+    )
+    cameras: list[str] = Field(
+        default_factory=list,
+        description="List of camera names to use.",
+    )
 
-    use_thermistors: bool = True
-    require_all_thermistors: bool = False
+    # Interactivity options
+    interactive: InteractiveMode = Field(
+        default=InteractiveMode.auto,
+        description="The interactive mode to use.",
+    )
+    no_prompt: bool = Field(
+        default=False,
+        description="Whether to disable prompts.",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Whether to perform a dry run without opening/closing valves.",
+    )
+    clear_lock: bool = Field(
+        default=False,
+        description="Whether to clear the lock file before running.",
+    )
+    with_traceback: bool = Field(
+        default=False,
+        description="Whether to show full traceback on errors.",
+    )
 
-    check_pressures: bool = True
-    check_temperatures: bool = True
-    check_o2_sensors: bool = True
+    # Thermistor and sensor options
+    use_thermistors: bool = Field(
+        default=True,
+        description="Whether to use thermistors.",
+    )
+    require_all_thermistors: bool = Field(
+        default=False,
+        description="Whether to require all thermistors to be active.",
+    )
 
-    max_pressure: float | None = None
-    max_temperature: float | None = None
-    purge_time: float | None = None
-    min_purge_time: float | None = None
-    max_purge_time: float | None = None
-    fill_time: float | None = None
-    min_fill_time: float | None = None
-    max_fill_time: float | None = None
+    # Initial checks
+    check_pressures: bool = Field(
+        default=True,
+        description="Whether to check pressures.",
+    )
+    check_temperatures: bool = Field(
+        default=True,
+        description="Whether to check temperatures.",
+    )
+    check_o2_sensors: bool = Field(
+        default=True,
+        description="Whether to check oxygen sensors.",
+    )
+    max_pressure: float | None = Field(
+        default=None,
+        description="Maximum cryostat pressure if checking pressures.",
+    )
+    max_temperature: float | None = Field(
+        default=None,
+        description="Maximum cryostat temperature if checking temperatures.",
+    )
 
-    max_temperature_increase: float = 0.0
+    # Timeout options
+    purge_time: float | None = Field(
+        default=None,
+        description="Purge time in seconds.",
+    )
+    min_purge_time: float | None = Field(
+        default=None,
+        description="Minimum purge time in seconds.",
+    )
+    max_purge_time: float | None = Field(
+        default=None,
+        description="Maximum purge time in seconds.",
+    )
+    fill_time: float | None = Field(
+        default=None,
+        description="Fill time in seconds.",
+    )
+    min_fill_time: float | None = Field(
+        default=None,
+        description="Minimum fill time in seconds.",
+    )
+    max_fill_time: float | None = Field(
+        default=None,
+        description="Maximum fill time in seconds.",
+    )
+    max_temperature_increase: float = Field(
+        default=0.0,
+        description="Maximum temperature increase allowed.",
+    )
 
-    verbose: bool = False
-    quiet: bool = False
-    notify: bool = True
-    slack: bool = True
-    email: bool = True
-    email_level: NotificationLevel = NotificationLevel.error
+    # Output and notification options
+    verbose: bool = Field(
+        default=False,
+        description="Whether to enable verbose output.",
+    )
+    quiet: bool = Field(
+        default=False,
+        description="Whether to suppress output.",
+    )
+    notify: bool = Field(
+        default=True,
+        description="Whether to send notifications.",
+    )
+    slack: bool = Field(
+        default=True,
+        description="Whether to send Slack notifications.",
+    )
+    email: bool = Field(
+        default=True,
+        description="Whether to send email notifications.",
+    )
+    email_level: NotificationLevel = Field(
+        default=NotificationLevel.error,
+        description="The notification level for emails.",
+    )
 
-    write_log: bool = False
-    log_path: pathlib.Path | None = None
-    write_json: bool = False
-    write_data: bool = False
-    data_path: pathlib.Path | None = None
-    data_extra_time: float = 0.0
+    # Logging options
+    write_log: bool = Field(
+        default=False,
+        description="Whether to write logs to a file.",
+    )
+    log_path: pathlib.Path | None = Field(
+        default=None,
+        description="Path to the log file.",
+    )
+    write_json: bool = Field(
+        default=False,
+        description="Whether to write JSON output.",
+    )
+    write_data: bool = Field(
+        default=False,
+        description="Whether to write data output.",
+    )
+    data_path: pathlib.Path | None = Field(
+        default=None,
+        description="Path to the data file.",
+    )
+    data_extra_time: float = Field(
+        default=0.0,
+        description="Extra time to add to data collection.",
+    )
 
-    version: str | None = None
+    version: str | None = Field(
+        default=None,
+        description="The version of the lvmcryo package.",
+    )
 
     valve_info: Annotated[dict[str, ValveConfig], ExcludedField] = {}
 
-    config_file: Annotated[pathlib.Path | None, ExcludedField] = None
     _internal_config: Annotated[Configuration, PrivateAttr] = Configuration({})
-
-    error: Annotated[bool, ExcludedField] = False
-
-    profile: str | None = None
-    param_origin: Annotated[dict[str, ParameterOrigin | None], ExcludedField] = {}
 
     def model_post_init(self, __context: Any) -> None:
         self._internal_config = get_internal_config(self.config_file)
@@ -189,10 +301,8 @@ class Config(BaseModel):
 
         from lvmcryo.tools import is_container
 
-        is_container = is_container()
-
         if value in ["yes", True, 1]:
-            if is_container:
+            if is_container():
                 warnings.warn(
                     "Interactive mode may not work in containers.",
                     UserWarning,
@@ -203,70 +313,12 @@ class Config(BaseModel):
             return InteractiveMode.no
 
         if value in ["auto", None]:
-            if is_container:
+            if is_container():
                 return InteractiveMode.no
             else:
                 return InteractiveMode.yes
 
         raise ValueError(f"Invalid value for interactive mode: {value!r}")
-
-    @model_validator(mode="before")
-    @classmethod
-    def before_validator(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            # Not sure if this is likely to happen.
-            return data
-
-        # Ensure we have an internal configuration dictionary.
-        config = get_internal_config(data.get("config_file", None))
-        defaults = config.get("defaults", {})
-
-        # If a profile has been passed, we update the input parameters with those
-        # in the profile. But we want to do that only for cases in which the user
-        # has not explicitly passed the parameter as a flag.
-        if (profile := data["profile"]) is not None:
-            profile_data = config.get("profiles", {}).get(profile, {})
-            param_origin = data.get("param_origin", {})
-            for key in profile_data:
-                if key not in data:
-                    warnings.warn(f"Unknwon parameter in profile: {key}", UserWarning)
-                    continue
-
-                if param_origin.get(key, None) not in [
-                    ParameterOrigin.COMMAND_LINE,
-                    ParameterOrigin.FUNCTION_CALL,
-                ]:
-                    data[key] = profile_data[key]
-
-        # Use internal configuration files to fill in missing fields.
-        for field in [
-            "min_purge_time",
-            "max_purge_time",
-            "min_fill_time",
-            "max_fill_time",
-            "max_pressure",
-            "max_temperature",
-            "max_temperature_increase",
-        ]:
-            default_value = defaults.get(field, None)
-            if field not in data or data[field] is None:
-                data[field] = default_value
-
-        if "cameras" not in data or data["cameras"] == []:
-            if "cameras" not in defaults:
-                raise ValueError("No cameras defined in the configuration file.")
-            data["cameras"] = defaults["cameras"]
-
-        if "valve_info" not in data or data["valve_info"] is None:
-            if "valve_info" not in config:
-                raise ValueError("No valve_info defined in the configuration file.")
-            data["valve_info"] = config["valve_info"]
-
-        # Fill out the interactive value for now with None. Will be validated later.
-        if "interactive" not in data:
-            data["interactive"] = None
-
-        return data
 
     @field_serializer("action", "interactive", "email_level")
     def serialize_enums(self, enum) -> str:
@@ -283,6 +335,30 @@ class Config(BaseModel):
     @model_validator(mode="after")
     def validate_after(self) -> Self:
         """Performs validations after the fields have been set."""
+
+        defaults = self.get_defaults()
+
+        # Use internal configuration files to fill in missing fields.
+        for field in [
+            "min_purge_time",
+            "max_purge_time",
+            "min_fill_time",
+            "max_fill_time",
+            "max_pressure",
+            "max_temperature",
+            "max_temperature_increase",
+        ]:
+            default_value = defaults.get(field, None)
+            if getattr(self, field) is None:
+                setattr(self, field, default_value)
+
+        if self.cameras == []:
+            self.cameras = defaults.get("cameras", [])
+
+        if self.valve_info is None or self.valve_info == {}:
+            if "valve_info" not in self._internal_config:
+                raise ValueError("No valve_info defined in the configuration file.")
+            self.valve_info = self._internal_config["valve_info"]
 
         # At this point we should have narrowed down the interactive mode.
         if self.interactive not in [InteractiveMode.yes, InteractiveMode.no]:
@@ -361,11 +437,24 @@ class Config(BaseModel):
         if self.use_thermistors:
             if self.max_fill_time is None or self.max_purge_time is None:
                 raise ValueError(
-                    "use_thermistors=True defining max_fill_time and max_purge_time. "
-                    "This probably indicates a problem with your configuration file."
+                    "use_thermistors=True requires defining max_fill_time and "
+                    "max_purge_time. This probably indicates a problem with your "
+                    "configuration file."
                 )
 
         return self
+
+    def get_internal_config(self) -> Configuration:
+        """Returns the internal configuration object."""
+
+        return self._internal_config
+
+    def get_defaults(self) -> dict[str, Any]:
+        """Returns a dictionary with the default values for all parameters."""
+
+        defaults = self._internal_config.get("defaults", {})
+
+        return defaults
 
     def _check_log_path(self, path: pathlib.Path, extension="log") -> pathlib.Path:
         """Checks that the log path is valid."""

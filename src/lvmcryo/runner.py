@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import itertools
 import logging
 import os
@@ -96,12 +97,12 @@ class LN2RunnerError(Exception):
 
 @register_parameter_origin
 async def ln2_runner(
-    action: Literal["purge", "fill", "purge-and-fill"] = "purge-and-fill",
+    action: Literal["purge", "fill", "purge-and-fill"] | Actions = "purge-and-fill",
     cameras: list[str] | None = None,
     profile: str | None = None,
-    config_file: pathlib.Path | None = None,
+    config_file: pathlib.Path | str | None = None,
     dry_run: bool = False,
-    interactive: Literal["auto", True, False, "yes", "no"] = False,
+    interactive: Literal["auto", True, False, "yes", "no"] | InteractiveMode = False,
     no_prompt: bool = True,
     with_traceback: bool = False,
     clear_lock: bool = False,
@@ -121,7 +122,7 @@ async def ln2_runner(
     notify: bool = False,
     slack: bool = True,
     email: bool = True,
-    email_level: Literal["error", "info"] = "error",
+    email_level: Literal["error", "info"] | NotificationLevel = "error",
     quiet: bool = False,
     verbose: bool = False,
     write_log: bool = False,
@@ -136,6 +137,18 @@ async def ln2_runner(
     """Runs LN2 purge/fill/abort/clear actions.
 
     This is a wrapper allowing the CLI functionality to be called programmatically.
+    Note that the default values in this function are only for reference; the actual
+    default values are defined in the ``defaults`` section of the configuration file
+    or as the default field value in the :obj:`.Config` model.
+
+    Parameters are processed in this order:
+    - If passed as function arguments, those values are used.
+    - If not passed but an environment variable ``LVMCRYO_<PARAMETER_NAME>`` is set,
+      that value is used.
+    - If a profile is specified, parameters defined in that profile are used.
+      The profile parameters are overridden if the parameter is specified as
+      in the function call or with an environment variable.
+    - Otherwise the default value in the configuration file or the model is used.
 
     Parameters
     ----------
@@ -234,73 +247,65 @@ async def ln2_runner(
     """
 
     try:
-        action_enum = Actions(action)
+        action = Actions(action)
 
         if interactive is True:
             interactive = "yes"
         elif interactive is False:
             interactive = "no"
-        interactive_enum = InteractiveMode(interactive)
+        interactive = InteractiveMode(interactive)
 
-        email_level_enum = NotificationLevel(email_level)
+        email_level = NotificationLevel(email_level)
 
-        # Load configuration from environment variables if not provided. For now
-        # only profile and config_file.
-        if (
-            "profile" not in __parameter_origin
-            or __parameter_origin["profile"] == ParameterOrigin.DEFAULT
-        ):
-            profile = os.environ.get("LVMCRYO_PROFILE", None)
+        # Get profile and config_file from envvars
+        # if we have not explicitly passed them.
+        profile = profile or os.environ.get("LVMCRYO_PROFILE", None)
 
-        if (
-            "config_file" not in __parameter_origin
-            or __parameter_origin["config_file"] == ParameterOrigin.DEFAULT
-        ):
-            config_file_env = os.environ.get("LVMCRYO_CONFIG_FILE", None)
-            if config_file_env is not None:
-                config_file = pathlib.Path(config_file_env)
+        config_file = config_file or os.environ.get("LVMCRYO_CONFIG_FILE", None)
+        config_file = pathlib.Path(config_file) if config_file else None
+
+        # Determine which parameters were provided on the CLI or as function
+        # arguments. For parameters not passed, check if there is an environment
+        # variable set. If so, use that value.
+        config_params = {}
+
+        args = list(inspect.signature(ln2_runner).parameters.keys())
+        for arg in args:
+            if arg in ["__parameter_origin", "log"]:
+                continue
+
+            param_value = locals()[arg]
+            param_origin = __parameter_origin.get(arg, ParameterOrigin.DEFAULT)
+
+            if param_origin == ParameterOrigin.DEFAULT:
+                # Check if the environment variable is set. Otherwise skip and let
+                # the default value be set in the Config class.
+                envvar = f"LVMCRYO_{arg.upper()}"
+                envvar_value = os.environ.get(envvar, None)
+                if envvar_value is not None:
+                    config_params[arg] = envvar_value
+            elif param_origin == ParameterOrigin.ENVVAR:
+                config_params[arg] = param_value
+            elif param_origin == ParameterOrigin.FUNCTION_CALL:
+                config_params[arg] = param_value
+            elif param_origin == ParameterOrigin.COMMAND_LINE:
+                config_params[arg] = param_value
 
         # Clear the cache for get_internal_config() to ensure fresh load.
         get_internal_config.cache_clear()
 
-        config = Config(
-            action=action_enum,
-            cameras=cameras or [],
-            config_file=config_file,
-            dry_run=dry_run,
-            clear_lock=clear_lock,
-            with_traceback=with_traceback,
-            interactive=interactive_enum,
-            no_prompt=no_prompt,
-            notify=notify,
-            slack=slack,
-            email=email,
-            email_level=email_level_enum,
-            use_thermistors=use_thermistors,
-            require_all_thermistors=require_all_thermistors,
-            check_pressures=check_pressures,
-            check_temperatures=check_temperatures,
-            check_o2_sensors=check_o2_sensors,
-            max_pressure=max_pressure,
-            max_temperature=max_temperature,
-            purge_time=purge_time,
-            min_purge_time=min_purge_time,
-            max_purge_time=max_purge_time,
-            fill_time=fill_time,
-            min_fill_time=min_fill_time,
-            max_fill_time=max_fill_time,
-            quiet=quiet,
-            verbose=verbose,
-            write_log=write_log,
-            write_json=write_json,
-            log_path=log_path,
-            write_data=write_data,
-            data_path=data_path,
-            data_extra_time=data_extra_time,
-            version=__version__,
-            profile=profile,
-            param_origin=__parameter_origin,
-        )
+        # Get the internal config and defaults.
+        config = get_internal_config(config_file)
+
+        # If we have specified a profile, use those parameters except if we have
+        # overridden them with a function parameters or envvar.
+        if profile is not None:
+            profile_config: dict = config[f"profiles.{profile}"] or {}
+            for key in profile_config:
+                if key not in config_params:
+                    config_params[key] = profile_config[key]
+
+        config = Config(**config_params, version=__version__)
         internal_config = config.internal_config
     except Exception as err:
         raise LN2RunnerError(f"Error parsing configuration: {err!r}") from err

@@ -12,6 +12,7 @@
 * [#15](https://github.com/sdss/lvmcryo/pull/15) Added ``abort`` CLI command.
 * No need to run `pyenv shell --unset` in the manual fill script since it runs in its own shell.
 * Add wait time before starting manual fill to allow other fills to be aborted.
+* Improve management of profiles and environment variables.
 
 ### 🔧 Fixed
 
