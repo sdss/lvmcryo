@@ -412,7 +412,11 @@ async def ln2_runner(
             lockfile_path,
             monitor=True,
             log=log,
-            on_release_callback=handler.abort(raise_error=False, close_valves=True),
+            on_release_callback=functools.partial(
+                handler.abort,
+                raise_error=False,
+                close_valves=True,
+            ),
         ):
             # Calculate the expected maximum run time.
             max_time: float = 2 * 3600  # It should never take longer than two hours.

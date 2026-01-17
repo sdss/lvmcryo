@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### ✨ Improved
+
+* Use coroutine function in `ensure_future.on_release_callback`.
+
+
 ## 0.5.0 - 2026-01-17
 
 ### 🚀 New
