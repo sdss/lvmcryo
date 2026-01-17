@@ -327,7 +327,7 @@ class Config(BaseModel):
 
         return enum.value
 
-    @field_serializer("log_path", "data_path")
+    @field_serializer("config_file", "log_path", "data_path")
     def serialize_path(self, path: pathlib.Path | None) -> str | None:
         """Serialises the path."""
 
