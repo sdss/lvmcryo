@@ -145,6 +145,7 @@ class Config(BaseModel):
     interactive: InteractiveMode | None = Field(
         default=None,
         description="The interactive mode to use.",
+        validate_default=True,
     )
     no_prompt: bool = Field(
         default=False,
@@ -331,15 +332,6 @@ class Config(BaseModel):
         """Serialises the path."""
 
         return str(path) if path is not None else None
-
-    @model_validator(mode="before")
-    @classmethod
-    def before_validator(cls, data: Any) -> Any:
-        # Fill out the interactive value for now with None. Will be validated later.
-        if "interactive" not in data:
-            data["interactive"] = None
-
-        return data
 
     @model_validator(mode="after")
     def validate_after(self) -> Self:
