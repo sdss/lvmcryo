@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import inspect
 import itertools
 import logging
@@ -397,7 +398,12 @@ async def ln2_runner(
         await asyncio.sleep(10)
 
     try:
-        db_handler = DBHandler(action, handler, config, json_handler=json_handler)
+        db_handler = DBHandler(
+            action.value,
+            handler,
+            config,
+            json_handler=json_handler,
+        )
         record_pk = await db_handler.update(complete=False)
         if record_pk:
             log.debug(f"Record {record_pk} created in the database.")
