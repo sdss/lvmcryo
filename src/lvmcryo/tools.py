@@ -466,7 +466,7 @@ class DBHandler:
             "plot_paths": {k: str(v) for k, v in self.plot_paths.items()},
             "log_file": str(log_path) if log_path else None,
             "valve_times": self.handler.get_valve_times(as_string=True),
-            "json_file": json_file,
+            "json_file": str(json_file) if json_file else None,
             "log_data": self.get_log_data(),
             "configuration": configuration_json,
             "error": str(self.error) if self.error is not None else None,
