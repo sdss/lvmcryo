@@ -142,8 +142,8 @@ class Config(BaseModel):
     )
 
     # Interactivity options
-    interactive: InteractiveMode = Field(
-        default=InteractiveMode.auto,
+    interactive: InteractiveMode | None = Field(
+        default=None,
         description="The interactive mode to use.",
     )
     no_prompt: bool = Field(
@@ -282,7 +282,7 @@ class Config(BaseModel):
         description="The version of the lvmcryo package.",
     )
 
-    valve_info: Annotated[dict[str, ValveConfig], ExcludedField] = {}
+    valve_info: dict[str, ValveConfig] = {}
 
     _internal_config: Annotated[Configuration, PrivateAttr] = Configuration({})
 
@@ -332,6 +332,15 @@ class Config(BaseModel):
 
         return str(path) if path is not None else None
 
+    @model_validator(mode="before")
+    @classmethod
+    def before_validator(cls, data: Any) -> Any:
+        # Fill out the interactive value for now with None. Will be validated later.
+        if "interactive" not in data:
+            data["interactive"] = None
+
+        return data
+
     @model_validator(mode="after")
     def validate_after(self) -> Self:
         """Performs validations after the fields have been set."""
@@ -358,7 +367,8 @@ class Config(BaseModel):
         if self.valve_info is None or self.valve_info == {}:
             if "valve_info" not in self._internal_config:
                 raise ValueError("No valve_info defined in the configuration file.")
-            self.valve_info = self._internal_config["valve_info"]
+            for valve, valve_info in self._internal_config["valve_info"].items():
+                self.valve_info[valve] = ValveConfig(**valve_info)
 
         # At this point we should have narrowed down the interactive mode.
         if self.interactive not in [InteractiveMode.yes, InteractiveMode.no]:
