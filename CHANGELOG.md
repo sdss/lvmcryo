@@ -1,6 +1,6 @@
 # Changelog
 
-## Next release
+## 0.5.2 - 2026-02-02
 
 ### 🔧 Fixed
 
