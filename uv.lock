@@ -992,7 +992,7 @@ wheels = [
 
 [[package]]
 name = "lvmcryo"
-version = "0.5.2"
+version = "0.5.3a1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
