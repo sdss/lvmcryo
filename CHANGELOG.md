@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### 🔧 Fixed
+
+Remove hotfix in `o2_alert`.
+
+
 ## 0.5.1 - 2026-01-17
 
 ### ✨ Improved
