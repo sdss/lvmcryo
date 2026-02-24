@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### 🏷️ Changed
+
+* Set `clear_lock` to `false` in the `production` profile to prevent automated fills from cancelling manual ones.
+
+
 ## 0.5.2 - 2026-02-02
 
 ### 🔧 Fixed

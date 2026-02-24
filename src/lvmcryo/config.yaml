@@ -16,7 +16,7 @@ lockfile: /data/lvmcryo.lock
 profiles:
   production:
     use_thermistors: true
-    clear_lock: true
+    clear_lock: false
     interactive: 'no'
     notify: true
     write_log: true
