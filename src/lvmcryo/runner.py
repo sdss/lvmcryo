@@ -306,6 +306,12 @@ async def ln2_runner(
                 if key not in config_params:
                     config_params[key] = profile_config[key]
 
+            # Fill any missing parameters with the defaults.
+            default_config: dict = config["defaults"] or {}
+            for key in default_config:
+                if key not in config_params:
+                    config_params[key] = default_config[key]
+
         config = Config(**config_params, version=__version__)
         internal_config = config.internal_config
     except Exception as err:

@@ -6,6 +6,10 @@
 
 * Set `clear_lock` to `false` in the `production` profile to prevent automated fills from cancelling manual ones.
 
+### ✨ Improved
+
+* Use `defaults` configuration values when a profile doesn't specify a parameter.
+
 
 ## 0.5.2 - 2026-02-02
 
