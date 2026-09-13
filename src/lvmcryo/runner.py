@@ -133,7 +133,7 @@ async def ln2_runner(
     data_path: pathlib.Path | None = None,
     data_extra_time: float = 60,
     log: SDSSLogger | None = None,
-    __parameter_origin: dict[str, ParameterOrigin | None] = {},
+    __parameter_origin: dict[str, ParameterOrigin | None] = {},  # type: ignore
 ):
     """Runs LN2 purge/fill/abort/clear actions.
 
@@ -312,7 +312,7 @@ async def ln2_runner(
                 if key not in config_params:
                     config_params[key] = default_config[key]
 
-        config = Config(**config_params, version=__version__)
+        config = Config(**config_params, version=__version__)  # type: ignore
         internal_config = config.internal_config
     except Exception as err:
         raise LN2RunnerError(f"Error parsing configuration: {err!r}") from err
