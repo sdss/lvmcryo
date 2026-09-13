@@ -9,6 +9,7 @@
 ### ✨ Improved
 
 * Use `defaults` configuration values when a profile doesn't specify a parameter.
+* Log `Retrier` errors as warnings.
 
 ### 🔧 Fixed
 

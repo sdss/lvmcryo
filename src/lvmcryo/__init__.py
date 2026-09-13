@@ -17,3 +17,9 @@ NAME = "lvmcryo"
 
 # package name should be pip package name
 __version__ = get_package_version(path=__file__, package_name=NAME)
+
+
+class RetrierWarning(UserWarning):
+    """Emitted when a retrier fails."""
+
+    pass

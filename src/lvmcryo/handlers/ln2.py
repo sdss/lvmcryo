@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import inspect
 import logging
+import warnings
 from dataclasses import dataclass, field
 
 from typing import Any, Callable, Coroutine, Literal, NoReturn, overload
@@ -28,6 +30,7 @@ from lvmopstools.devices.thermistors import read_thermistors
 from lvmopstools.retrier import Retrier
 from sdsstools.utils import GatheringTaskGroup
 
+from lvmcryo import RetrierWarning
 from lvmcryo.config import ValveConfig, get_internal_config
 from lvmcryo.handlers.thermistor import ThermistorMonitor
 from lvmcryo.handlers.valve import ValveHandler
@@ -48,6 +51,12 @@ def get_now():
     """Returns a UTC datetime for now."""
 
     return datetime.datetime.now(datetime.UTC)
+
+
+def log_retrier_error(error: Exception):
+    """Logs an error from a retrier."""
+
+    warnings.warn(f"Error in retrier: {error}. Retrying ...", RetrierWarning)
 
 
 class EventDict(BaseModel):
@@ -197,7 +206,7 @@ class LN2Handler:
 
         """
 
-        retrier = Retrier(max_attempts=3, delay=1)
+        retrier = Retrier(max_attempts=3, delay=1, on_retry=log_retrier_error)
 
         # Check O2 alarms.
         if not self.alerts_route:
@@ -617,7 +626,7 @@ class LN2Handler:
 
             await asyncio.sleep(3)
 
-    @Retrier(max_attempts=3, delay=2)
+    @Retrier(max_attempts=3, delay=2, on_retry=log_retrier_error)
     async def stop(self, close_valves: bool = True, only_active: bool = True):
         """Cancels ongoing fills and closes the valves.
 
