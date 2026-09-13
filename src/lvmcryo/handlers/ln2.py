@@ -357,7 +357,7 @@ class LN2Handler:
 
         try:
             if preopen_cb:
-                if asyncio.iscoroutinefunction(preopen_cb):
+                if inspect.iscoroutinefunction(preopen_cb):
                     await preopen_cb()
                 else:
                     preopen_cb()
@@ -461,7 +461,7 @@ class LN2Handler:
 
         try:
             if preopen_cb:
-                if asyncio.iscoroutinefunction(preopen_cb):
+                if inspect.iscoroutinefunction(preopen_cb):
                     await preopen_cb()
                 else:
                     preopen_cb()
