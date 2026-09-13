@@ -10,6 +10,7 @@
 
 * Use `defaults` configuration values when a profile doesn't specify a parameter.
 * Log `Retrier` errors as warnings.
+* Increase `Retrier` delay for `valve_on_off` from 1s to 3s.
 
 ### 🔧 Fixed
 

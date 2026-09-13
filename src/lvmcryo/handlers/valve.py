@@ -60,7 +60,7 @@ async def outlet_info(actor: str, outlet: str) -> dict[str, Any]:
     return cmd.replies.get("outlet_info")
 
 
-@Retrier(max_attempts=3, delay=1, timeout=30, on_retry=log_retrier_error)
+@Retrier(max_attempts=3, delay=3, timeout=30, on_retry=log_retrier_error)
 async def valve_on_off(
     actor: str,
     outlet_name: str,
