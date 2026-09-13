@@ -511,6 +511,8 @@ async def ln2_runner(
         # block for a long time.
         await db_handler.update(complete=True, error=error)
 
+        plot_paths: dict[str, pathlib.Path] = {}
+
         if not skip_finally:
             plot_paths = await post_fill_tasks(
                 handler,
@@ -542,41 +544,41 @@ async def ln2_runner(
                 elif not validate_failed:
                     log.info("Fill validation completed successfully.")
 
-            log.info("Writing fill metadata to database.")
-            await db_handler.update(complete=True, plot_paths=plot_paths, error=error)
+        log.info("Writing fill metadata to database.")
+        await db_handler.update(complete=True, plot_paths=plot_paths, error=error)
 
-            if config.notify:
-                images = {
-                    "pressure": plot_paths.get("pressure_png", None),
-                    "temps": plot_paths.get("temps_png", None),
-                    "thermistors": plot_paths.get("thermistors_png", None),
-                }
+        if config.notify:
+            images = {
+                "pressure": plot_paths.get("pressure_png", None),
+                "temps": plot_paths.get("temps_png", None),
+                "thermistors": plot_paths.get("thermistors_png", None),
+            }
 
-                if error:
-                    log.warning("Sending failure notifications.")
-                    await notifier.notify_after_fill(
-                        False,
-                        error_message=error,
-                        handler=handler,
-                        images=images,
-                        record_pk=record_pk,
-                    )
+            if error:
+                log.warning("Sending failure notifications.")
+                await notifier.notify_after_fill(
+                    False,
+                    error_message=error,
+                    handler=handler,
+                    images=images,
+                    record_pk=record_pk,
+                )
 
-                elif config.email_level == NotificationLevel.info:
-                    # The handler has already emitted a notification to
-                    # Slack so just send an email.
+            elif config.email_level == NotificationLevel.info:
+                # The handler has already emitted a notification to
+                # Slack so just send an email.
 
-                    # TODO: include log and more data here.
-                    # For now it's just plain text.
+                # TODO: include log and more data here.
+                # For now it's just plain text.
 
-                    log.info("Sending notification email.")
-                    await notifier.notify_after_fill(
-                        True,
-                        handler=handler,
-                        images=images,
-                        post_to_slack=False,  # Already done.
-                        record_pk=record_pk,
-                    )
+                log.info("Sending notification email.")
+                await notifier.notify_after_fill(
+                    True,
+                    handler=handler,
+                    images=images,
+                    post_to_slack=False,  # Already done.
+                    record_pk=record_pk,
+                )
 
         await db_handler.update()
 

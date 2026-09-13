@@ -10,12 +10,16 @@
 
 * Use `defaults` configuration values when a profile doesn't specify a parameter.
 
+### 🔧 Fixed
+
+* Fixed a bug that prevented notifications being sent after a fill failed.
+
 
 ## 0.5.2 - 2026-02-02
 
 ### 🔧 Fixed
 
-Remove hotfix in `o2_alert`.
+* Remove hotfix in `o2_alert`.
 
 
 ## 0.5.1 - 2026-01-17
