@@ -377,31 +377,35 @@ class Config(BaseModel):
             self.write_log = True
         elif self.write_log is False:
             self.log_path = None
-        else:
-            if self.log_path is not None:
-                self._check_log_path(self.log_path)
-            else:
+
+        if self.write_log:
+            if not self.log_path:
                 default_path = defaults.get("log_path", "./{timestamp}.log")
-                self.log_path = pathlib.Path(
-                    default_path.format(timestamp=self._log_basename())
-                )
+                self.log_path = default_path
+
+            self.log_path = pathlib.Path(
+                str(self.log_path).format(timestamp=self._log_basename())
+            )
+            self._check_log_path(self.log_path)
 
         # Ensure the data path is set correctly.
         if self.data_path is not None:
             self.write_data = True
         elif self.write_data is False:
             self.data_path = None
-        else:
-            if self.data_path is not None:
-                self._check_log_path(self.data_path)
-            else:
+
+        if self.write_data:
+            if not self.data_path:
                 if self.log_path is not None:
                     self.data_path = self.log_path.with_suffix(".parquet")
                 else:
                     default_path = defaults.get("data_path", "./{timestamp}.parquet")
-                    self.data_path = pathlib.Path(
-                        default_path.format(timestamp=self._log_basename("parquet"))
-                    )
+                    self.data_path = pathlib.Path(default_path)
+
+            self.data_path = pathlib.Path(
+                str(self.data_path).format(timestamp=self._log_basename())
+            )
+            self._check_log_path(self.data_path)
 
         # We won't write a JSON file if we are not writing a normal log.
         if not self.write_log:

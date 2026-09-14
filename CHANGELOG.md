@@ -1,5 +1,12 @@
 # Changelog
 
+## Next release
+
+### 🔧 Fixed
+
+* Fix template path not being filled for log and data file names.
+
+
 ## 0.6.0 - 2026-09-13
 
 ### 🏷️ Changed
